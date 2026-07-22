@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./dist/src/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
-    "create-admin": "tsx scripts/create-admin.ts"
+    "start": "node dist/src/index.js",
+    "create-admin": "tsx scripts/create-admin.ts",
+    "create-admin:built": "node dist/scripts/create-admin.js"
   },
   "dependencies": {
     "@cop/shared-types": "*",
