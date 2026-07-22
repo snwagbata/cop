@@ -1,0 +1,13 @@
+-- Fixes a gap caught during verification of the public API's dispute-
+-- submission endpoint (DESIGN.md §10): cop_public_api had no grants at all
+-- on `disputes` (0015 grouped it with the other internal-only tables), but
+-- the public correction/takedown form is specified to write directly into
+-- `disputes` with status='open'. That's the one deliberate exception to
+-- "public role never writes" — public members of the public need to be able
+-- to file a correction request without a reviewer account.
+--
+-- SELECT is also granted (not just INSERT) so a future "check your dispute
+-- status" feature doesn't need a third grant added later — UPDATE/DELETE
+-- remain withheld from cop_public_api; only a reviewer (cop_internal_api)
+-- can resolve a dispute.
+GRANT SELECT, INSERT ON disputes TO cop_public_api;
