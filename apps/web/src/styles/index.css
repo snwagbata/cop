@@ -1,0 +1,616 @@
+:root {
+  --color-bg: #ffffff;
+  --color-bg-subtle: #f4f5f7;
+  --color-text: #1a1d21;
+  --color-text-muted: #55595f;
+  --color-border: #d8dbe0;
+  --color-link: #1257a3;
+  --color-accent: #14324f;
+
+  /* Badge category colors — DESIGN.md §3: sustained findings must be
+     visually distinct from dismissed/unsustained/exonerated via a
+     consistent color/badge system used the same way everywhere, and
+     alleged/pending get a third, neutral treatment. Deliberately not a
+     "traffic light" red/yellow/green scheme (that reads as a rating on the
+     department scorecard, §3) but on incident/outcome badges specifically,
+     color-as-distinction (not color-as-score) is the required mitigation. */
+  --badge-adverse-bg: #fbe4e4;
+  --badge-adverse-border: #b3261e;
+  --badge-adverse-text: #7a1c17;
+
+  --badge-cleared-bg: #e3f2e7;
+  --badge-cleared-border: #2e7d4f;
+  --badge-cleared-text: #1e5636;
+
+  --badge-neutral-bg: #f1eede;
+  --badge-neutral-border: #8a7a3a;
+  --badge-neutral-text: #5f5326;
+
+  --badge-review-bg: #e6e9f5;
+  --badge-review-border: #445198;
+  --badge-review-text: #2c3568;
+
+  --disclaimer-bg: #fff8e6;
+  --disclaimer-border: #b3892e;
+
+  --radius: 6px;
+  --max-width: 880px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #14171a;
+    --color-bg-subtle: #1d2126;
+    --color-text: #e7e9ec;
+    --color-text-muted: #a4aab2;
+    --color-border: #333941;
+    --color-link: #6fa8e8;
+    --color-accent: #cdd9e6;
+
+    --badge-adverse-bg: #3a1a19;
+    --badge-adverse-border: #e0665f;
+    --badge-adverse-text: #ffb3ab;
+
+    --badge-cleared-bg: #16301f;
+    --badge-cleared-border: #4fae76;
+    --badge-cleared-text: #9fe3ba;
+
+    --badge-neutral-bg: #332d16;
+    --badge-neutral-border: #c9ac4c;
+    --badge-neutral-text: #e8d488;
+
+    --badge-review-bg: #1e2340;
+    --badge-review-border: #7c8ce0;
+    --badge-review-text: #b6c0f2;
+
+    --disclaimer-bg: #332711;
+    --disclaimer-border: #c9932e;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--color-link);
+}
+
+.site-header {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.9rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.site-header__brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  text-decoration: none;
+  color: var(--color-text);
+}
+
+.site-header__nav {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.95rem;
+}
+
+.container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 4rem;
+}
+
+.page-title {
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  color: var(--color-text-muted);
+  margin-top: 0;
+}
+
+/* --- search --- */
+
+.search-form {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1.5rem 0;
+}
+
+.search-form input[type="search"] {
+  flex: 1;
+  padding: 0.65rem 0.85rem;
+  font-size: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+button,
+.button {
+  padding: 0.6rem 1.1rem;
+  font-size: 0.95rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button.secondary,
+.button.secondary {
+  background: transparent;
+  color: var(--color-accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  button,
+  .button {
+    color: #14171a;
+  }
+  button.secondary,
+  .button.secondary {
+    color: var(--color-accent);
+    background: transparent;
+  }
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.empty-state {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.error-state {
+  border: 1px solid var(--badge-adverse-border);
+  background: var(--badge-adverse-bg);
+  color: var(--badge-adverse-text);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+}
+
+/* --- disambiguation / candidate cards --- */
+
+.candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.candidate-card {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  background: var(--color-bg-subtle);
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.candidate-card:hover {
+  border-color: var(--color-accent);
+}
+
+.candidate-card__photo,
+.photo-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--color-border);
+}
+
+.photo-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  color: var(--color-text-muted);
+}
+
+.candidate-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.candidate-card__name {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.candidate-card__detail {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+/* --- disclaimer --- */
+
+.disclaimer {
+  background: var(--disclaimer-bg);
+  border: 1px solid var(--disclaimer-border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin: 1.25rem 0;
+  font-size: 0.95rem;
+}
+
+.disclaimer__label {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  display: block;
+  margin-bottom: 0.4rem;
+  color: var(--disclaimer-border);
+}
+
+/* --- officer header --- */
+
+.officer-header {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.officer-header__photo,
+.officer-header .photo-placeholder {
+  width: 96px;
+  height: 96px;
+}
+
+.officer-header__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.employment-status {
+  display: inline-block;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* --- section --- */
+
+section.page-section {
+  margin: 2rem 0;
+}
+
+section.page-section h2 {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.4rem;
+}
+
+/* --- department history timeline --- */
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 3px solid var(--color-border);
+}
+
+.history-item {
+  padding: 0.15rem 0 1rem 1.1rem;
+  position: relative;
+}
+
+.history-item::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 0.35rem;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid var(--color-bg);
+}
+
+.history-item__dept {
+  font-weight: 700;
+}
+
+.history-item__meta {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+/* --- incidents / outcomes --- */
+
+.incident-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.incident-card__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.incident-card__date-type {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.35rem;
+}
+
+.incident-card__description {
+  margin: 0.6rem 0;
+}
+
+.incident-card__officers {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  border: 1.5px solid;
+  white-space: nowrap;
+}
+
+.badge--adverse {
+  background: var(--badge-adverse-bg);
+  border-color: var(--badge-adverse-border);
+  color: var(--badge-adverse-text);
+}
+
+.badge--cleared {
+  background: var(--badge-cleared-bg);
+  border-color: var(--badge-cleared-border);
+  color: var(--badge-cleared-text);
+}
+
+.badge--neutral {
+  background: var(--badge-neutral-bg);
+  border-color: var(--badge-neutral-border);
+  color: var(--badge-neutral-text);
+}
+
+.badge--review {
+  background: var(--badge-review-bg);
+  border-color: var(--badge-review-border);
+  color: var(--badge-review-text);
+}
+
+.outcome-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.outcome-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  background: var(--color-bg-subtle);
+}
+
+.outcome-card__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.outcome-card__amount {
+  font-weight: 700;
+}
+
+.outcome-card__details {
+  margin: 0.5rem 0 0;
+  color: var(--color-text);
+}
+
+.citation-list {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.citation {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  border-left: 3px solid var(--color-border);
+  padding-left: 0.6rem;
+}
+
+.citation__tier {
+  font-weight: 600;
+}
+
+.citation-heading {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+  margin: 0.7rem 0 0.2rem;
+}
+
+.no-citations {
+  font-size: 0.85rem;
+  color: var(--badge-adverse-text);
+  font-style: italic;
+}
+
+/* --- departments --- */
+
+.department-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.department-list a {
+  display: block;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+  text-decoration: none;
+  color: var(--color-text);
+}
+
+.department-list a:hover {
+  border-color: var(--color-accent);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.stat-tile {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+}
+
+.stat-tile__value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  display: block;
+}
+
+.stat-tile__label {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.stats-note {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.9rem;
+  margin-top: 1.5rem;
+}
+
+/* --- dispute form --- */
+
+.dispute-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 560px;
+}
+
+.dispute-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.dispute-form input,
+.dispute-form select,
+.dispute-form textarea {
+  font: inherit;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.dispute-form textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.dispute-context {
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.7rem 1rem;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.success-state {
+  border: 1px solid var(--badge-cleared-border);
+  background: var(--badge-cleared-bg);
+  color: var(--badge-cleared-text);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+}
+
+.site-footer {
+  border-top: 1px solid var(--color-border);
+  padding: 1.25rem;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.loading-state {
+  color: var(--color-text-muted);
+  padding: 2rem 0;
+}
