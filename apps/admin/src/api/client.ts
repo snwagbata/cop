@@ -1,0 +1,186 @@
+/**
+ * Single place every HTTP call to the internal API goes through.
+ *
+ * Keeping this as one module (rather than scattering fetch() calls across
+ * pages) means: one spot to change the base URL / auth header behavior, one
+ * spot that defines what "logged out" means, and one spot to point at fixture
+ * data instead of the network while the internal API is being built out
+ * concurrently (see apps/admin/README.md).
+ */
+import type {
+  ApiErrorResponse,
+  ApproveReviewQueueItemRequest,
+  Dispute,
+  DisputeStatus,
+  ListDisputesResponse,
+  ListReviewQueueResponse,
+  LoginRequest,
+  LoginResponse,
+  RejectReviewQueueItemRequest,
+  ResolveDisputeRequest,
+  ReviewQueueItem,
+  ReviewQueueStatus,
+} from "@cop/shared-types";
+
+const DEFAULT_BASE_URL = "http://localhost:4002";
+
+function getBaseUrl(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL;
+  const base = configured && configured.length > 0 ? configured : DEFAULT_BASE_URL;
+  return base.replace(/\/$/, "");
+}
+
+/**
+ * Thrown for any non-2xx response. Carries the parsed ApiErrorResponse when
+ * the server sent one, so callers can show `message` (or `error`) instead of
+ * a generic "request failed" string.
+ */
+export class ApiError extends Error {
+  status: number;
+  body: ApiErrorResponse | null;
+
+  constructor(status: number, body: ApiErrorResponse | null, fallbackMessage: string) {
+    super(body?.message ?? body?.error ?? fallbackMessage);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+const TOKEN_STORAGE_KEY = "cop_admin_token";
+
+// In-memory token, mirrored to sessionStorage so a page reload during a
+// reviewer's session doesn't force a re-login. Per the task spec this is an
+// MVP-acceptable storage choice, not a hardened auth store.
+let currentToken: string | null = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+
+/** Called whenever a request comes back 401, so the app can drop back to /login. */
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
+export function setToken(token: string | null): void {
+  currentToken = token;
+  if (token) {
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } else {
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  }
+}
+
+export function getToken(): string | null {
+  return currentToken;
+}
+
+interface RequestOptions {
+  method?: string;
+  body?: unknown;
+  /** Skip attaching the Authorization header (only login needs this). */
+  skipAuth?: boolean;
+}
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { method = "GET", body, skipAuth = false } = options;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (!skipAuth && currentToken) {
+    headers.Authorization = `Bearer ${currentToken}`;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${getBaseUrl()}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (networkErr) {
+    throw new ApiError(
+      0,
+      null,
+      `Could not reach the internal API at ${getBaseUrl()}. Is it running? (${
+        networkErr instanceof Error ? networkErr.message : String(networkErr)
+      })`,
+    );
+  }
+
+  if (response.status === 401) {
+    unauthorizedHandler?.();
+  }
+
+  if (!response.ok) {
+    let parsedBody: ApiErrorResponse | null = null;
+    try {
+      parsedBody = (await response.json()) as ApiErrorResponse;
+    } catch {
+      // Body wasn't JSON (or was empty) — fall back to status text below.
+    }
+    throw new ApiError(response.status, parsedBody, `Request failed with status ${response.status}`);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
+}
+
+// ---------------------------------------------------------------------------
+// Typed endpoint wrappers
+// ---------------------------------------------------------------------------
+
+export function login(payload: LoginRequest): Promise<LoginResponse> {
+  return request<LoginResponse>("/api/internal/auth/login", {
+    method: "POST",
+    body: payload,
+    skipAuth: true,
+  });
+}
+
+export function fetchReviewQueue(status: ReviewQueueStatus = "pending"): Promise<ListReviewQueueResponse> {
+  return request<ListReviewQueueResponse>(
+    `/api/internal/review-queue?status=${encodeURIComponent(status)}`,
+  );
+}
+
+export function approveReviewQueueItem(
+  id: string,
+  payload: ApproveReviewQueueItemRequest = {},
+): Promise<ReviewQueueItem | undefined> {
+  return request<ReviewQueueItem | undefined>(`/api/internal/review-queue/${encodeURIComponent(id)}/approve`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function rejectReviewQueueItem(
+  id: string,
+  payload: RejectReviewQueueItemRequest,
+): Promise<ReviewQueueItem | undefined> {
+  return request<ReviewQueueItem | undefined>(`/api/internal/review-queue/${encodeURIComponent(id)}/reject`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function fetchDisputes(status: DisputeStatus = "open"): Promise<ListDisputesResponse> {
+  return request<ListDisputesResponse>(`/api/internal/disputes?status=${encodeURIComponent(status)}`);
+}
+
+export function resolveDispute(
+  id: string,
+  payload: ResolveDisputeRequest,
+): Promise<Dispute | undefined> {
+  return request<Dispute | undefined>(`/api/internal/disputes/${encodeURIComponent(id)}/resolve`, {
+    method: "POST",
+    body: payload,
+  });
+}

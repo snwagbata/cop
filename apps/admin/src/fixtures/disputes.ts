@@ -1,0 +1,51 @@
+import type { Dispute } from "@cop/shared-types";
+
+export const disputeFixtures: Dispute[] = [
+  {
+    id: "dp-1",
+    incidentId: "inc-101",
+    outcomeId: null,
+    officerId: null,
+    requesterName: "Officer Jordan Michaels",
+    requesterRole: "officer",
+    claim:
+      "The incident date listed is incorrect — the internal affairs finding was dated a month later than shown, and the outcome was 'unsustained,' not 'sustained.'",
+    evidenceUrl: "https://example.org/evidence/ia-finding-corrected.pdf",
+    submittedAt: "2026-07-10T12:00:00.000Z",
+    status: "open",
+    resolutionNotes: null,
+    resolvedBy: null,
+    resolvedAt: null,
+  },
+  {
+    id: "dp-2",
+    incidentId: null,
+    outcomeId: "out-55",
+    officerId: null,
+    requesterName: "Fairview County Sheriff's Office (Legal Counsel)",
+    requesterRole: "department",
+    claim: "The settlement amount listed is double the actual settlement per the signed agreement.",
+    evidenceUrl: null,
+    submittedAt: "2026-07-14T09:30:00.000Z",
+    status: "open",
+    resolutionNotes: null,
+    resolvedBy: null,
+    resolvedAt: null,
+  },
+  {
+    id: "dp-3",
+    incidentId: null,
+    outcomeId: null,
+    officerId: "off-204",
+    requesterName: "R. Alvarez, Esq.",
+    requesterRole: "attorney",
+    claim:
+      "The officer profile lists the wrong department for the current employment record — client separated from Riverdale PD in 2025 and is now employed elsewhere.",
+    evidenceUrl: "https://example.org/evidence/employment-letter.pdf",
+    submittedAt: "2026-07-19T17:20:00.000Z",
+    status: "open",
+    resolutionNotes: null,
+    resolvedBy: null,
+    resolvedAt: null,
+  },
+];
