@@ -1,0 +1,127 @@
+import type { ReviewQueueItem } from "@cop/shared-types";
+
+/**
+ * Fixture data matching @cop/shared-types exactly, used both by the dev-mode
+ * "mock API" toggle (see api/mockClient.ts) and by component tests. The
+ * internal API wasn't reachable while this app was built (see README), so
+ * this is the primary way the review-queue rendering logic was verified.
+ */
+export const reviewQueueFixtures: ReviewQueueItem[] = [
+  {
+    id: "rq-1",
+    proposedRecord: {
+      type: "officer_candidate",
+      firstName: "Jordan",
+      lastName: "Michaels",
+      departmentName: "Riverdale Police Department",
+      badgeNumber: "4417",
+      postCertificationId: "CA-POST-88213",
+      note: "Extracted from state decertification registry nightly pull.",
+    },
+    source: {
+      id: "src-1",
+      sourceType: "decertification_registry",
+      url: "https://post.ca.gov/registry/example-88213",
+      publicationDate: "2026-06-01",
+      retrievedDate: "2026-06-02",
+      reliabilityTier: "tier2_official_dataset",
+    },
+    matchConfidence: "high",
+    status: "pending",
+    reviewerId: null,
+    reviewedAt: null,
+    createdAt: "2026-07-15T09:00:00.000Z",
+  },
+  {
+    id: "rq-2",
+    proposedRecord: {
+      type: "incident_candidate",
+      officerId: "off-204",
+      departmentName: "Riverdale Police Department",
+      incidentType: "use_of_force",
+      shortDescription:
+        "DA's office declined to prosecute after body cam review of a use-of-force incident during a traffic stop.",
+      date: "2026-05-11",
+      note: "Matched to existing officer via post_certification_id.",
+    },
+    source: {
+      id: "src-2",
+      sourceType: "news_article",
+      url: "https://example-news.org/riverdale-da-declines",
+      publicationDate: "2026-05-20",
+      retrievedDate: "2026-05-21",
+      reliabilityTier: "tier3_established_news",
+    },
+    matchConfidence: "high",
+    status: "pending",
+    reviewerId: null,
+    reviewedAt: null,
+    createdAt: "2026-07-16T14:30:00.000Z",
+  },
+  {
+    id: "rq-3",
+    proposedRecord: {
+      type: "incident_candidate",
+      officerName: "R. Alvarez",
+      departmentName: "Fairview County Sheriff's Office",
+      incidentType: "false_report",
+      shortDescription:
+        "Civil rights lawsuit filed alleging a fabricated incident report; case pending.",
+      date: "2026-04-02",
+      note: "No existing officer match found (low name-match confidence) — needs manual identity resolution before approval.",
+    },
+    source: {
+      id: "src-3",
+      sourceType: "court_doc",
+      url: "https://www.courtlistener.com/docket/example-1234",
+      publicationDate: "2026-04-02",
+      retrievedDate: "2026-04-05",
+      reliabilityTier: "tier1_primary_legal_doc",
+    },
+    matchConfidence: "low",
+    status: "pending",
+    reviewerId: null,
+    reviewedAt: null,
+    createdAt: "2026-07-17T11:15:00.000Z",
+  },
+  {
+    id: "rq-4",
+    proposedRecord: {
+      type: "officer_candidate",
+      firstName: "Pat",
+      lastName: "Nguyen",
+      departmentName: "Riverdale Police Department",
+      note: "Submitted via anonymous tip form; unverified.",
+    },
+    source: {
+      id: "src-4",
+      sourceType: "public_records_response",
+      url: "https://example.org/tips/submission-991",
+      publicationDate: null,
+      retrievedDate: "2026-07-18",
+      reliabilityTier: "tier4_submitted_unverified",
+    },
+    matchConfidence: "medium",
+    status: "pending",
+    reviewerId: null,
+    reviewedAt: null,
+    createdAt: "2026-07-18T08:05:00.000Z",
+  },
+  {
+    id: "rq-5",
+    proposedRecord: {
+      type: "incident_candidate",
+      officerName: "Jordan Michaels",
+      departmentName: "Riverdale Police Department",
+      incidentType: "unlawful_arrest",
+      shortDescription: "Sustained internal affairs finding for unlawful arrest during a welfare check.",
+      note: "No source attached yet — placeholder to exercise the null-source rendering path.",
+    },
+    source: null,
+    matchConfidence: "low",
+    status: "pending",
+    reviewerId: null,
+    reviewedAt: null,
+    createdAt: "2026-07-19T16:45:00.000Z",
+  },
+];
