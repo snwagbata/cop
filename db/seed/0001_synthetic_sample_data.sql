@@ -95,9 +95,17 @@ INSERT INTO citations (source_id, citable_type, citable_id) VALUES
 -- A pending low-confidence candidate: a news mention that fuzzy-matches an
 -- existing officer by name but doesn't carry a POST ID or badge number,
 -- so per DESIGN.md §6 it's routed to manual review rather than auto-matched.
+-- Shape matches IncidentCandidateProposal in packages/shared-types exactly
+-- (camelCase, required shortDescription) — an earlier version of this seed
+-- used ad-hoc snake_case fields predating that contract, which crashed the
+-- admin UI's review-queue renderer (ReviewQueueItemCard expects
+-- rec.incidentType) once verification/test data that had been masking the
+-- mismatch was cleared out. officerId is deliberately omitted: that's what
+-- forces the API's approve endpoint to require a reviewer-supplied edit
+-- rather than auto-resolving a fuzzy name match.
 INSERT INTO review_queue (proposed_record, source_id, match_confidence, status) VALUES
     (
-        '{"type": "incident_candidate", "officer_name": "R. Smith", "department": "Springfield Police Department (fictional)", "incident_type": "use_of_force", "note": "Name-only fuzzy match; no post_certification_id or badge_number in source text."}'::jsonb,
+        '{"type": "incident_candidate", "officerName": "R. Smith", "departmentName": "Springfield Police Department (fictional)", "incidentType": "use_of_force", "shortDescription": "A news report described a use-of-force allegation involving an officer matching this name at this department; officer identity not yet confirmed against badge or POST records.", "note": "Name-only fuzzy match; no post_certification_id or badge_number in source text."}'::jsonb,
         '00000000-0000-0000-0000-000000000033',
         'low',
         'pending'

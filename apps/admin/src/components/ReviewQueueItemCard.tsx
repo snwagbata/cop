@@ -168,10 +168,10 @@ export function ReviewQueueItemCard({ item, onApprove, onReject }: Props) {
 
 function renderTitle(rec: ReviewQueueItem["proposedRecord"]): string {
   if (rec.type === "officer_candidate") {
-    return `${rec.firstName} ${rec.lastName} — ${rec.departmentName}`;
+    return `${rec.firstName ?? "?"} ${rec.lastName ?? "?"} — ${rec.departmentName ?? "unknown department"}`;
   }
   const who = rec.officerName ?? (rec.officerId ? `officer ${rec.officerId}` : "unmatched officer");
-  return `Incident: ${who} — ${rec.departmentName}`;
+  return `Incident: ${who} — ${rec.departmentName ?? "unknown department"}`;
 }
 
 function renderDetails(rec: ReviewQueueItem["proposedRecord"]) {
@@ -195,13 +195,13 @@ function renderDetails(rec: ReviewQueueItem["proposedRecord"]) {
   return (
     <dl className="kv-grid">
       <dt>Incident type</dt>
-      <dd>{rec.incidentType.replace(/_/g, " ")}</dd>
+      <dd>{rec.incidentType ? rec.incidentType.replace(/_/g, " ") : "— (missing from source record)"}</dd>
       <dt>Date</dt>
       <dd>{rec.date ? formatDate(rec.date) : "—"}</dd>
       <dt>Officer match</dt>
       <dd>{rec.officerId ? `matched (${rec.officerId})` : rec.officerName ? `${rec.officerName} (unmatched)` : "unmatched"}</dd>
       <dt>Description</dt>
-      <dd>{rec.shortDescription}</dd>
+      <dd>{rec.shortDescription ?? "— (missing from source record)"}</dd>
       {rec.note && (
         <>
           <dt>Note</dt>
