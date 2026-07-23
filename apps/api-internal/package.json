@@ -9,7 +9,8 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/src/index.js",
     "create-admin": "tsx scripts/create-admin.ts",
-    "create-admin:built": "node dist/scripts/create-admin.js"
+    "create-admin:built": "node dist/scripts/create-admin.js",
+    "test": "vitest run"
   },
   "dependencies": {
     "@cop/shared-types": "*",
@@ -24,7 +25,10 @@
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.0",
     "@types/pg": "^8.11.6",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
     "tsx": "^4.16.2",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.9"
   }
 }
