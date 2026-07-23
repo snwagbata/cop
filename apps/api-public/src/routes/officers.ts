@@ -314,6 +314,13 @@ officersRouter.get("/:id", async (req, res, next) => {
       photoUrl: o.photo_url,
       departmentHistory,
       incidents,
+      // TODO(resolvedDisputes): placeholder until the right-of-reply feature
+      // lands — query disputes where status != 'open' AND (officer_id = :id
+      // OR incident_id IN officer's incidents OR outcome_id IN officer's
+      // outcomes), mapped to ResolvedDisputeSummary. Added as a required
+      // shared-types field ahead of that work so downstream consumers
+      // (apps/web) can build against the real shape now.
+      resolvedDisputes: [],
       disclaimer: STANDARD_OFFICER_PAGE_DISCLAIMER,
     };
 

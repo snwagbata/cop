@@ -1,0 +1,103 @@
+/**
+ * Design tokens shared by apps/web and apps/admin. "Minimal, high-UX":
+ * restrained neutral palette + one accent, a 4px spacing grid, one
+ * type scale, one shadow elevation, and the semantic status-color
+ * vocabulary (adverse/cleared/neutral/review) that both apps' badge
+ * systems key off of — this is what DESIGN.md §3 calls the mandatory
+ * visual distinction between sustained and dismissed/exonerated findings,
+ * so it lives here once rather than being redefined per app.
+ *
+ * System font stack only — no external font loading, keeps the public
+ * site fast on the first paint that matters most (someone looking up an
+ * officer right after an encounter, possibly on a slow connection).
+ */
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --gray-0: #ffffff;
+  --gray-50: #f8f9fb;
+  --gray-100: #eef0f4;
+  --gray-200: #dfe3e9;
+  --gray-300: #c5cbd6;
+  --gray-400: #9aa3b2;
+  --gray-500: #707a8c;
+  --gray-600: #545d6e;
+  --gray-700: #3b4252;
+  --gray-800: #262b36;
+  --gray-900: #14171e;
+
+  --accent-100: #e8ecfb;
+  --accent-500: #3457d5;
+  --accent-600: #2946b8;
+
+  --status-adverse-fg: #9a2b2b;
+  --status-adverse-bg: #fbe9e9;
+  --status-adverse-border: #e3b3b3;
+
+  --status-cleared-fg: #1f7a4d;
+  --status-cleared-bg: #e7f6ee;
+  --status-cleared-border: #a9dcc0;
+
+  --status-neutral-fg: #8a6100;
+  --status-neutral-bg: #fdf3d9;
+  --status-neutral-border: #ecd28c;
+
+  --status-review-fg: #4a4f8a;
+  --status-review-bg: #edeefb;
+  --status-review-border: #c3c6ee;
+
+  --bg: var(--gray-0);
+  --bg-subtle: var(--gray-50);
+  --border: var(--gray-200);
+  --text: var(--gray-900);
+  --text-muted: var(--gray-600);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(20, 23, 30, 0.06), 0 1px 1px rgba(20, 23, 30, 0.04);
+  --shadow-md: 0 4px 12px rgba(20, 23, 30, 0.08);
+
+  --transition-fast: 120ms ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: var(--gray-900);
+    --bg-subtle: #1b1f28;
+    --border: #2b303c;
+    --text: var(--gray-50);
+    --text-muted: var(--gray-400);
+
+    --status-adverse-fg: #f5b5b5;
+    --status-adverse-bg: #3a2020;
+    --status-adverse-border: #5c2f2f;
+
+    --status-cleared-fg: #9be0bd;
+    --status-cleared-bg: #163828;
+    --status-cleared-border: #245239;
+
+    --status-neutral-fg: #f0d488;
+    --status-neutral-bg: #3a3013;
+    --status-neutral-border: #5a4a1c;
+
+    --status-review-fg: #c3c6f5;
+    --status-review-bg: #262a4a;
+    --status-review-border: #3a3f6e;
+
+    --accent-100: #202a4f;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 1px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+  }
+}

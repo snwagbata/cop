@@ -1,0 +1,261 @@
+/**
+ * Base reset + component classes shared by apps/web and apps/admin.
+ * Import tokens.css before this file. App-specific stylesheets should
+ * layer on top of these classes for layout, not redefine color/spacing
+ * values — that's what tokens.css is for, and what keeps the two apps
+ * visually consistent as one product.
+ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 {
+  line-height: 1.25;
+  margin: 0 0 var(--space-3);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+h1 { font-size: 1.75rem; }
+h2 { font-size: 1.375rem; }
+h3 { font-size: 1.125rem; }
+h4 { font-size: 1rem; }
+
+p {
+  margin: 0 0 var(--space-3);
+  color: var(--text);
+}
+
+small, .text-muted {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+a {
+  color: var(--accent-600);
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Skip-to-content link — hidden until keyboard-focused. Every page must
+   render a `<a href="#main" class="skip-link">Skip to content</a>` as the
+   first focusable element, and a `<main id="main">` landmark. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--accent-500);
+  color: #fff;
+  padding: var(--space-2) var(--space-4);
+  z-index: 1000;
+  border-radius: 0 0 var(--radius-sm) 0;
+}
+.skip-link:focus {
+  left: 0;
+}
+
+.container {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 var(--space-4);
+}
+.container-wide {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 var(--space-4);
+}
+
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+}
+
+.stack > * + * {
+  margin-top: var(--space-4);
+}
+.stack-sm > * + * {
+  margin-top: var(--space-2);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+.btn-primary { background: var(--accent-500); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-600); }
+.btn-secondary { background: var(--bg); border-color: var(--border); color: var(--text); }
+.btn-secondary:hover:not(:disabled) { background: var(--bg-subtle); }
+.btn-danger { background: var(--bg); border-color: var(--status-adverse-border); color: var(--status-adverse-fg); }
+.btn-danger:hover:not(:disabled) { background: var(--status-adverse-bg); }
+.btn-sm { padding: var(--space-1) var(--space-3); font-size: 0.8125rem; }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid;
+  white-space: nowrap;
+}
+.badge-adverse { color: var(--status-adverse-fg); background: var(--status-adverse-bg); border-color: var(--status-adverse-border); }
+.badge-cleared { color: var(--status-cleared-fg); background: var(--status-cleared-bg); border-color: var(--status-cleared-border); }
+.badge-neutral { color: var(--status-neutral-fg); background: var(--status-neutral-bg); border-color: var(--status-neutral-border); }
+.badge-review  { color: var(--status-review-fg);  background: var(--status-review-bg);  border-color: var(--status-review-border); }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+}
+.field label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.field input,
+.field select,
+.field textarea {
+  font: inherit;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+}
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--accent-500);
+}
+.field-hint {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.field-error {
+  font-size: 0.8125rem;
+  color: var(--status-adverse-fg);
+}
+
+.top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border);
+}
+.top-nav-links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+.top-nav a {
+  color: var(--text);
+  font-weight: 500;
+}
+.top-nav .brand {
+  font-weight: 700;
+  font-size: 1.0625rem;
+  color: var(--text);
+}
+
+.callout {
+  border: 1px solid var(--status-neutral-border);
+  background: var(--status-neutral-bg);
+  color: var(--text);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-6);
+}
+.callout-error {
+  border-color: var(--status-adverse-border);
+  background: var(--status-adverse-bg);
+}
+.callout-info {
+  border-color: var(--border);
+  background: var(--bg-subtle);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+th, td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9375rem;
+}
+th {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent-500);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

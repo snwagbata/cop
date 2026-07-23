@@ -146,6 +146,21 @@ export interface OfficerSearchCandidate {
   photoUrl: string | null;
 }
 
+/**
+ * A resolved dispute's public-facing summary, surfaced inline on the record
+ * it targets (DESIGN.md §12's "right-of-reply excerpt" backlog item — shown
+ * on the page itself, not just logged in the internal disputes table).
+ * Deliberately narrow: only what's needed to show the resolution in context,
+ * not the full internal Dispute shape (requester identity stays internal).
+ */
+export interface ResolvedDisputeSummary {
+  targetType: "incident" | "outcome" | "officer";
+  targetId: string;
+  status: Exclude<DisputeStatus, "open">;
+  resolutionNotes: string;
+  resolvedAt: string;
+}
+
 export interface OfficerDetail {
   id: string;
   firstName: string;
@@ -158,6 +173,8 @@ export interface OfficerDetail {
   photoUrl: string | null;
   departmentHistory: OfficerDepartmentHistoryEntry[];
   incidents: Incident[];
+  /** Resolved disputes touching this officer or any of their incidents/outcomes. */
+  resolvedDisputes: ResolvedDisputeSummary[];
   /**
    * Standard disclaimer block (DESIGN.md §3) — the API returns the copy so
    * the frontend never accidentally omits it. Not officer-specific content;
@@ -289,6 +306,195 @@ export interface ListDisputesResponse {
 export interface ResolveDisputeRequest {
   status: Exclude<DisputeStatus, "open">;
   resolutionNotes: string;
+}
+
+// ---------------------------------------------------------------------------
+// Public API additions (post-MVP build-out)
+// ---------------------------------------------------------------------------
+
+export interface PageInfo {
+  page: number;
+  pageSize: number;
+  totalCount: number;
+}
+
+/** GET /api/public/officers — browse/filter, distinct from the disambiguation search endpoint. */
+export interface ListOfficersResponse {
+  officers: OfficerSearchCandidate[];
+  pageInfo: PageInfo;
+}
+
+export interface CreatePublicDisputeRequest {
+  incidentId?: string;
+  outcomeId?: string;
+  officerId?: string;
+  requesterName: string;
+  requesterRole: DisputeRequesterRole;
+  claim: string;
+  evidenceUrl?: string;
+}
+
+export interface CreatePublicDisputeResponse {
+  dispute: Dispute;
+}
+
+/**
+ * GET /api/public/disputes/:id — deliberately narrow (id/status/submittedAt
+ * only), NOT the full Dispute shape: this endpoint is reachable by anyone
+ * who has the id (returned at submission time), so it must never leak
+ * another submitter's requesterName/claim/evidenceUrl. Full detail stays
+ * internal-only via the reviewer-authenticated API.
+ */
+export interface DisputeStatusResponse {
+  id: string;
+  status: DisputeStatus;
+  submittedAt: string;
+  resolvedAt: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Internal API additions (post-MVP build-out)
+// ---------------------------------------------------------------------------
+
+/** GET /api/internal/officers/search — same matching behavior as the public
+ * search endpoint, mirrored under internal auth so the admin app's officer
+ * picker (for resolving an unmatched incident_candidate) doesn't have to
+ * depend on the public service being reachable. */
+export type SearchInternalOfficersResponse = SearchOfficersResponse;
+
+export interface CreateDepartmentRequest {
+  name: string;
+  state: string;
+  jurisdictionType: string;
+  contactInfo?: string;
+  recordsRequestPortalUrl?: string;
+}
+
+export interface CreateOfficerRequest {
+  firstName: string;
+  lastName: string;
+  knownAliases?: string[];
+  departmentId: string;
+  badgeNumber?: string;
+  rank?: string;
+  hireDate?: string;
+  employmentStatus?: EmploymentStatus; // defaults to 'active'
+  postCertificationId?: string;
+  photoUrl?: string;
+}
+
+export interface CreateSourceRequest {
+  sourceType: SourceType;
+  url: string;
+  publicationDate?: string;
+  retrievedDate?: string; // defaults to today
+  reliabilityTier: ReliabilityTier;
+}
+
+export interface CreateIncidentRequest {
+  departmentId: string;
+  date: string;
+  incidentType: IncidentType;
+  shortDescription: string;
+  status?: IncidentStatus; // defaults to 'alleged'
+  officerIds: string[]; // at least one; involvementRole defaults to 'primary' for the first, 'other' for rest
+  /** Existing source ids to cite immediately (a source must already exist — create it first via CreateSourceRequest if needed). */
+  sourceIds?: string[];
+}
+
+export interface CreateOutcomeRequest {
+  incidentId: string;
+  outcomeType: OutcomeType;
+  date?: string;
+  amountCents?: number;
+  currency?: string; // defaults to 'USD'
+  details?: string;
+  sourceIds?: string[];
+}
+
+export interface CreateCitationRequest {
+  sourceId: string;
+  citableType: CitableType;
+  citableId: string;
+}
+
+/** Manual-entry responses all follow this shape: the created row, plus
+ * confirmation a record_revisions entry was written (DESIGN.md §3's
+ * evidentiary audit trail applies to manual entry exactly as it does to
+ * review-queue approvals — there is no "off the record" write path). */
+export interface CreateRecordResponse<T> {
+  record: T;
+  revisionId: string;
+}
+
+export interface CreateReviewerRequest {
+  name: string;
+  email: string;
+  role: "admin" | "reviewer";
+  password: string;
+}
+
+export interface UpdateReviewerRequest {
+  role?: "admin" | "reviewer";
+  active?: boolean;
+}
+
+export interface ListReviewersResponse {
+  reviewers: Reviewer[];
+}
+
+export interface RecordRevision {
+  id: string;
+  recordType: "officer" | "incident" | "outcome" | "source";
+  recordId: string;
+  changeType: "create" | "update" | "approve" | "reject" | "dispute_resolution";
+  diff: Record<string, unknown> | null;
+  changedByReviewerId: string | null;
+  changedByReviewerName: string | null;
+  createdAt: string;
+}
+
+export interface ListRecordRevisionsResponse {
+  revisions: RecordRevision[];
+  pageInfo: PageInfo;
+}
+
+/**
+ * GET /api/internal/review-queue/digest — DESIGN.md §7's "12 new candidate
+ * records this week, 9 auto-matched with high confidence, 3 need your
+ * input" weekly-digest feature. periodDays defaults to 7 if not specified
+ * by the caller.
+ */
+export interface ReviewDigest {
+  periodStart: string;
+  periodEnd: string;
+  newCount: number;
+  highConfidenceCount: number;
+  needsAttentionCount: number; // medium/low confidence, still pending
+  approvedCount: number;
+  rejectedCount: number;
+  openDisputeCount: number;
+}
+
+export interface GetReviewDigestResponse {
+  digest: ReviewDigest;
+}
+
+/**
+ * POST /api/internal/review-queue/bulk-approve — DESIGN.md §7's "bulk-approve
+ * a whole batch from a single trusted source after spot-checking a sample."
+ * Server-side enforces the same tier1/tier2-only rule as single-item
+ * one-click approve; a request containing any tier3/tier4-sourced or
+ * non-high-confidence item fails that item individually rather than the
+ * whole batch (see `failed` below) — never silently downgrades the rule.
+ */
+export interface BulkApproveRequest {
+  reviewQueueIds: string[];
+}
+
+export interface BulkApproveResponse {
+  approved: string[];
+  failed: { id: string; error: string }[];
 }
 
 // ---------------------------------------------------------------------------
