@@ -61,7 +61,7 @@ describe("OfficerDetailPage", () => {
     renderAt("off-1");
 
     const heading = await screen.findByText("Department history");
-    const historyList = heading.closest("section")!.querySelector(".history-list")!;
+    const historyList = heading.closest("section")!.querySelector(".history-list") as HTMLElement;
     for (const entry of officerDetailFixture.departmentHistory) {
       expect(within(historyList).getByText(entry.departmentName)).toBeInTheDocument();
     }
@@ -85,10 +85,12 @@ describe("OfficerDetailPage", () => {
     const dispute = officerDetailFixture.resolvedDisputes[0];
     const targetCard = (await screen.findByText("Allegation of a falsified incident report.")).closest(
       ".incident-card",
-    )!;
+    ) as HTMLElement;
     expect(within(targetCard).getByText(dispute.resolutionNotes)).toBeInTheDocument();
 
-    const otherCard = screen.getByText("Use-of-force complaint during a traffic stop.").closest(".incident-card")!;
+    const otherCard = screen.getByText("Use-of-force complaint during a traffic stop.").closest(
+      ".incident-card",
+    ) as HTMLElement;
     expect(within(otherCard).queryByText(dispute.resolutionNotes)).not.toBeInTheDocument();
   });
 

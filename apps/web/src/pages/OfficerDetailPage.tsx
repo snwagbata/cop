@@ -129,12 +129,7 @@ export function OfficerDetailPage() {
           <p className="subtitle">No incidents on file for this officer.</p>
         ) : (
           officer.incidents.map((incident) => (
-            <IncidentCard
-              key={incident.id}
-              incident={incident}
-              currentOfficerId={officer.id}
-              resolvedDisputes={officer.resolvedDisputes}
-            />
+            <IncidentCard key={incident.id} incident={incident} resolvedDisputes={officer.resolvedDisputes} />
           ))
         )}
       </section>

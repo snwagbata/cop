@@ -111,10 +111,11 @@ describe("DisputeFormPage", () => {
     });
 
     it(
-      "BUG (documented, not fixed here): the page has no client-side guard against multiple target params — " +
-        "when both officerId and incidentId are present (as IncidentCard's \"Dispute this record\" link on the " +
-        "officer detail page actually generates), it forwards both, which the API rejects as a 400 " +
-        '("Exactly one of incidentId, outcomeId, or officerId must be set").',
+      "picks incidentId over officerId when both target params are present in the URL, rather than " +
+        "forwarding an invalid combination (fixed bug: IncidentCard's \"Dispute this record\" link on the " +
+        "officer detail page used to generate exactly this URL shape, which always failed the API's " +
+        '"exactly one of incidentId, outcomeId, or officerId" validation; this is now also guarded ' +
+        "client-side as defense in depth, since these are user-editable URL params, not just app-generated links)",
       async () => {
         vi.mocked(api.submitDispute).mockResolvedValue(submitDisputeResponseFixture);
         const user = userEvent.setup();
@@ -126,10 +127,26 @@ describe("DisputeFormPage", () => {
 
         await screen.findByText(/has been submitted/);
         const call = vi.mocked(api.submitDispute).mock.calls[0][0];
-        // This is the bug: both are sent, which violates the "exactly one" rule.
         expect(call.incidentId).toBe("inc-1");
-        expect(call.officerId).toBe("off-1");
+        expect(call.officerId).toBeUndefined();
+        expect(call.outcomeId).toBeUndefined();
       },
     );
+
+    it("picks outcomeId over officerId when both are present but incidentId is not", async () => {
+      vi.mocked(api.submitDispute).mockResolvedValue(submitDisputeResponseFixture);
+      const user = userEvent.setup();
+      renderAt("/disputes/new?outcomeId=out-1&officerId=off-1");
+
+      await user.type(screen.getByLabelText("Your name"), "Jane Doe");
+      await user.type(screen.getByLabelText("What is inaccurate, and why?"), "The amount is wrong.");
+      await user.click(screen.getByRole("button", { name: "Submit request" }));
+
+      await screen.findByText(/has been submitted/);
+      const call = vi.mocked(api.submitDispute).mock.calls[0][0];
+      expect(call.outcomeId).toBe("out-1");
+      expect(call.officerId).toBeUndefined();
+      expect(call.incidentId).toBeUndefined();
+    });
   });
 });

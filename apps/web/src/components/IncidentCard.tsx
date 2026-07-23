@@ -20,11 +20,9 @@ import { formatDate, label } from "../lib/format";
  */
 export function IncidentCard({
   incident,
-  currentOfficerId,
   resolvedDisputes = [],
 }: {
   incident: Incident;
-  currentOfficerId?: string;
   /** Full resolvedDisputes list from the officer record; filtered here per-target (§12 right-of-reply). */
   resolvedDisputes?: ResolvedDisputeSummary[];
 }) {
@@ -68,12 +66,13 @@ export function IncidentCard({
       )}
 
       <p style={{ marginTop: "0.75rem" }}>
-        <Link
-          className="btn btn-secondary"
-          to={`/disputes/new?incidentId=${encodeURIComponent(incident.id)}${
-            currentOfficerId ? `&officerId=${encodeURIComponent(currentOfficerId)}` : ""
-          }`}
-        >
+        {/* incidentId alone is the correct, complete target — the API requires
+            exactly one of incidentId/outcomeId/officerId (DESIGN.md §10), and
+            the officer is already identified via incident.officers above. An
+            earlier version of this link also appended officerId when rendered
+            from an officer's page, which made every submission from here fail
+            the API's validation; found via the apps/web test suite. */}
+        <Link className="btn btn-secondary" to={`/disputes/new?incidentId=${encodeURIComponent(incident.id)}`}>
           Dispute this record
         </Link>
       </p>

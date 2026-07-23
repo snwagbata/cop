@@ -23,9 +23,22 @@ const ROLE_OPTIONS: { value: DisputeRequesterRole; label: string }[] = [
  */
 export function DisputeFormPage() {
   const [params] = useSearchParams();
-  const officerId = params.get("officerId") ?? undefined;
-  const incidentId = params.get("incidentId") ?? undefined;
-  const outcomeId = params.get("outcomeId") ?? undefined;
+  // Defense in depth, not just trust in our own links: the API requires
+  // exactly one of officerId/incidentId/outcomeId (DESIGN.md §10), but these
+  // are URL query params — editable directly in the browser bar regardless
+  // of what any in-app link generates. If more than one is present, pick
+  // deterministically (most specific first) rather than forwarding an
+  // invalid combination the API will just reject. (A real bug once reached
+  // here: an incident-page link used to include both incidentId and
+  // officerId, which always failed server-side — fixed at the link's
+  // source in IncidentCard, but this guard means a similar mistake
+  // elsewhere can't silently break dispute submission again.)
+  const rawOfficerId = params.get("officerId") ?? undefined;
+  const rawIncidentId = params.get("incidentId") ?? undefined;
+  const rawOutcomeId = params.get("outcomeId") ?? undefined;
+  const incidentId = rawIncidentId;
+  const outcomeId = !incidentId ? rawOutcomeId : undefined;
+  const officerId = !incidentId && !outcomeId ? rawOfficerId : undefined;
 
   const [requesterName, setRequesterName] = useState("");
   const [requesterRole, setRequesterRole] = useState<DisputeRequesterRole>("subject");
