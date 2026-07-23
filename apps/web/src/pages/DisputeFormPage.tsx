@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { DisputeRequesterRole } from "@cop/shared-types";
 import { ApiError, submitDispute } from "../lib/apiClient";
 
-type SubmitState = { status: "idle" | "submitting" | "done" | "error"; message?: string };
+type SubmitState =
+  | { status: "idle" | "submitting" | "error"; message?: string }
+  | { status: "done"; disputeId?: string };
 
 const ROLE_OPTIONS: { value: DisputeRequesterRole; label: string }[] = [
   { value: "subject", label: "Subject of the record" },
@@ -35,7 +37,7 @@ export function DisputeFormPage() {
     e.preventDefault();
     setState({ status: "submitting" });
     try {
-      await submitDispute({
+      const res = await submitDispute({
         officerId,
         incidentId,
         outcomeId,
@@ -44,7 +46,7 @@ export function DisputeFormPage() {
         claim,
         evidenceUrl: evidenceUrl.trim() || undefined,
       });
-      setState({ status: "done" });
+      setState({ status: "done", disputeId: res.dispute.id });
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : "Something went wrong submitting this request. Please try again.";
@@ -55,8 +57,17 @@ export function DisputeFormPage() {
   if (state.status === "done") {
     return (
       <div className="success-state">
-        Your correction request has been submitted. We aim to acknowledge every request within 5 business days.
-        Resolution notes will be reflected on the relevant record once reviewed.
+        <p>
+          Your correction request has been submitted. We aim to acknowledge every request within 5 business days.
+          Resolution notes will be reflected on the relevant record once reviewed.
+        </p>
+        {state.disputeId && (
+          <p>
+            Your request id is <code>{state.disputeId}</code>. Save it — you can{" "}
+            <Link to={`/disputes/status?id=${encodeURIComponent(state.disputeId)}`}>check its status</Link> at any
+            time.
+          </p>
+        )}
       </div>
     );
   }
@@ -80,47 +91,54 @@ export function DisputeFormPage() {
       )}
 
       <form className="dispute-form" onSubmit={handleSubmit}>
-        <label>
-          Your name
+        <div className="field">
+          <label htmlFor="requesterName">Your name</label>
           <input
+            id="requesterName"
             required
             type="text"
             value={requesterName}
             onChange={(e) => setRequesterName(e.target.value)}
             autoComplete="name"
           />
-        </label>
+        </div>
 
-        <label>
-          Your role
-          <select value={requesterRole} onChange={(e) => setRequesterRole(e.target.value as DisputeRequesterRole)}>
+        <div className="field">
+          <label htmlFor="requesterRole">Your role</label>
+          <select
+            id="requesterRole"
+            value={requesterRole}
+            onChange={(e) => setRequesterRole(e.target.value as DisputeRequesterRole)}
+          >
             {ROLE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label>
-          What is inaccurate, and why?
+        <div className="field">
+          <label htmlFor="claim">What is inaccurate, and why?</label>
           <textarea
+            id="claim"
             required
             value={claim}
             onChange={(e) => setClaim(e.target.value)}
             placeholder="Describe specifically what you believe is wrong and what the correct information is."
           />
-        </label>
+        </div>
 
-        <label>
-          Link to supporting evidence (optional)
+        <div className="field">
+          <label htmlFor="evidenceUrl">Link to supporting evidence (optional)</label>
           <input
+            id="evidenceUrl"
             type="url"
             value={evidenceUrl}
             onChange={(e) => setEvidenceUrl(e.target.value)}
             placeholder="https://…"
           />
-        </label>
+        </div>
 
         {state.status === "error" && (
           <div className="error-state" role="alert">
@@ -128,7 +146,7 @@ export function DisputeFormPage() {
           </div>
         )}
 
-        <button type="submit" disabled={state.status === "submitting"}>
+        <button type="submit" className="btn btn-primary" disabled={state.status === "submitting"}>
           {state.status === "submitting" ? "Submitting…" : "Submit request"}
         </button>
       </form>

@@ -70,6 +70,11 @@ const LABELS: Record<string, string> = {
   primary: "Primary",
   witness: "Witness",
   named_defendant: "Named Defendant",
+  // dispute status (right-of-reply)
+  open: "Open",
+  resolved_corrected: "Resolved — Record Corrected",
+  resolved_no_change: "Resolved — No Change Made",
+  resolved_removed: "Resolved — Record Removed",
 };
 
 export function label(key: string): string {
