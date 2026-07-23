@@ -12,6 +12,7 @@ vi.mock("../../api/client", async () => {
     fetchReviewQueue: vi.fn(),
     approveReviewQueueItem: vi.fn(),
     rejectReviewQueueItem: vi.fn(),
+    bulkApproveReviewQueueItems: vi.fn(),
   };
 });
 
@@ -54,5 +55,48 @@ describe("ReviewQueuePage", () => {
     vi.mocked(api.fetchReviewQueue).mockRejectedValueOnce(new Error("Could not reach the internal API"));
     render(<ReviewQueuePage />);
     expect(await screen.findByRole("alert")).toHaveTextContent(/Could not reach the internal API/);
+  });
+
+  it("bulk-approves selected items and reports which succeeded/failed", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.bulkApproveReviewQueueItems).mockResolvedValue({
+      approved: ["rq-1"],
+      failed: [{ id: "rq-4", error: "tier4 sources require individual review" }],
+    });
+    render(<ReviewQueuePage />);
+    await screen.findByTestId("review-item-rq-1");
+
+    const card1 = screen.getByTestId("review-item-rq-1");
+    const card4 = screen.getByTestId("review-item-rq-4");
+    await user.click(within(card1).getByRole("checkbox"));
+    await user.click(within(card4).getByRole("checkbox"));
+
+    await user.click(screen.getByRole("button", { name: /Bulk approve selected \(2\)/ }));
+
+    await waitFor(() =>
+      expect(api.bulkApproveReviewQueueItems).toHaveBeenCalledWith({ reviewQueueIds: ["rq-1", "rq-4"] }),
+    );
+    expect(await screen.findByText(/1 approved, 1 failed/)).toBeInTheDocument();
+    expect(screen.getByText(/tier4 sources require individual review/)).toBeInTheDocument();
+    expect(screen.queryByTestId("review-item-rq-1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("review-item-rq-4")).toBeInTheDocument();
+  });
+
+  it("select-all toggles every visible item's checkbox", async () => {
+    const user = userEvent.setup();
+    render(<ReviewQueuePage />);
+    await screen.findByTestId("review-item-rq-1");
+
+    await user.click(screen.getByLabelText(/Select all/));
+    for (const item of reviewQueueFixtures) {
+      const card = screen.getByTestId(`review-item-${item.id}`);
+      expect(within(card).getByRole("checkbox")).toBeChecked();
+    }
+
+    await user.click(screen.getByLabelText(/Select all/));
+    for (const item of reviewQueueFixtures) {
+      const card = screen.getByTestId(`review-item-${item.id}`);
+      expect(within(card).getByRole("checkbox")).not.toBeChecked();
+    }
   });
 });
