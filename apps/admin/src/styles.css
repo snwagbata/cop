@@ -1,49 +1,14 @@
-/* Minimal, functional styling for an internal reviewer tool — see
-   DESIGN.md §7: this is designed for a small trusted group doing a fast
-   weekly pass, not a public-facing design surface. */
+/* Admin/reviewer-tool layout and component styling. Colors, spacing,
+   radii, and shadows all come from @cop/design-system/tokens.css (imported
+   in main.tsx ahead of this file); .card/.btn/.badge/.field/.top-nav/table
+   come from @cop/design-system/base.css. This file only adds the
+   admin-specific layout and the small set of classes base.css doesn't
+   cover (kv-grid, officer picker, tabs, stat tiles, etc).
 
-:root {
-  color-scheme: light;
-  --bg: #f5f6f8;
-  --panel: #ffffff;
-  --border: #d9dde2;
-  --text: #1b1f24;
-  --text-muted: #5b6470;
-  --accent: #2b5fd9;
-  --danger: #b3261e;
-  --danger-bg: #fdecea;
-  --success: #1e7a34;
-  --success-bg: #e8f5ea;
-  --warn-bg: #fff6e0;
-  --warn: #8a6300;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-}
-
-button {
-  font: inherit;
-  cursor: pointer;
-}
-
-input,
-textarea,
-select {
-  font: inherit;
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: white;
-  color: var(--text);
-}
+   DESIGN.md §7: this is a small trusted reviewer group doing a fast weekly
+   pass, so the redesign favors clarity and low-friction keyboard-first
+   actions over visual flourish, while sharing a token source with the
+   public site so the two read as one product family. */
 
 .app-shell {
   min-height: 100vh;
@@ -51,77 +16,53 @@ select {
   flex-direction: column;
 }
 
-.topbar {
+.top-nav-left {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1.25rem;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
+  gap: var(--space-6);
 }
 
-.topbar-left {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-}
-
-.topbar-brand {
-  font-weight: 700;
-  font-size: 1.05rem;
-}
-
-.topbar nav {
-  display: flex;
-  gap: 1rem;
-}
-
-.topbar nav a {
+.top-nav-links a {
   color: var(--text-muted);
-  text-decoration: none;
+  font-weight: 500;
   font-size: 0.95rem;
-  padding: 0.25rem 0;
+  padding: var(--space-1) 0;
   border-bottom: 2px solid transparent;
 }
 
-.topbar nav a.active,
-.topbar nav a:hover {
+.top-nav-links a.active,
+.top-nav-links a:hover {
   color: var(--text);
-  border-bottom-color: var(--accent);
+  text-decoration: none;
+  border-bottom-color: var(--accent-500);
 }
 
-.topbar-right {
+.top-nav-right {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-4);
   font-size: 0.9rem;
-  color: var(--text-muted);
 }
 
 .btn-link {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--accent-600);
   padding: 0;
   text-decoration: underline;
+  font: inherit;
+  cursor: pointer;
 }
 
 main.page {
   flex: 1;
-  max-width: 920px;
   width: 100%;
-  margin: 0 auto;
-  padding: 1.5rem 1.25rem 4rem;
-}
-
-h1 {
-  font-size: 1.4rem;
-  margin: 0 0 0.25rem;
+  padding: var(--space-6) var(--space-6) var(--space-16);
 }
 
 .page-subtitle {
   color: var(--text-muted);
-  margin: 0 0 1.25rem;
+  margin: 0 0 var(--space-6);
   font-size: 0.95rem;
 }
 
@@ -130,174 +71,54 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg);
+  background: var(--bg-subtle);
+  padding: var(--space-4);
 }
 
 .login-card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 2rem;
   width: 100%;
-  max-width: 340px;
+  max-width: 360px;
 }
 
 .login-card h1 {
-  margin-bottom: 1rem;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  margin-bottom: 0.9rem;
-}
-
-.field label {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.field input,
-.field textarea,
-.field select {
-  width: 100%;
-}
-
-.btn {
-  border: 1px solid var(--border);
-  background: white;
-  padding: 0.45rem 0.9rem;
-  border-radius: 5px;
-  font-size: 0.9rem;
-}
-
-.btn:hover:not(:disabled) {
-  background: #f0f1f3;
-}
-
-.btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #234ec2;
-}
-
-.btn-danger {
-  background: white;
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: var(--danger-bg);
+  margin-bottom: var(--space-1);
 }
 
 .btn-block {
   width: 100%;
+  justify-content: center;
 }
 
-.banner {
-  padding: 0.6rem 0.9rem;
-  border-radius: 5px;
-  font-size: 0.88rem;
-  margin-bottom: 1rem;
-}
+/* --- review-queue / dispute cards --- */
 
-.banner-error {
-  background: var(--danger-bg);
-  color: var(--danger);
-  border: 1px solid rgba(179, 38, 30, 0.25);
-}
-
-.banner-info {
-  background: var(--warn-bg);
-  color: var(--warn);
-  border: 1px solid rgba(138, 99, 0, 0.2);
-}
-
-.card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1rem 1.1rem;
-  margin-bottom: 1rem;
+.review-item-card {
+  margin-bottom: var(--space-4);
+  display: flex;
+  flex-direction: column;
 }
 
 .card-header {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.6rem;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.review-item-select {
+  padding-top: 2px;
 }
 
 .card-title {
-  font-weight: 600;
+  font-weight: 650;
   font-size: 1rem;
-}
-
-.badge {
-  display: inline-block;
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
-.badge-confidence-high {
-  background: var(--success-bg);
-  color: var(--success);
-}
-
-.badge-confidence-medium {
-  background: var(--warn-bg);
-  color: var(--warn);
-}
-
-.badge-confidence-low {
-  background: var(--danger-bg);
-  color: var(--danger);
-}
-
-.badge-tier1,
-.badge-tier2 {
-  background: var(--success-bg);
-  color: var(--success);
-}
-
-.badge-tier3 {
-  background: var(--warn-bg);
-  color: var(--warn);
-}
-
-.badge-tier4 {
-  background: var(--danger-bg);
-  color: var(--danger);
-}
-
-.badge-type {
-  background: #eef1f8;
-  color: #364259;
 }
 
 .kv-grid {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 0.25rem 0.75rem;
+  gap: var(--space-1) var(--space-4);
   font-size: 0.9rem;
-  margin: 0.5rem 0 0.75rem;
+  margin: var(--space-2) 0 var(--space-3);
 }
 
 .kv-grid dt {
@@ -311,34 +132,30 @@ h1 {
 .source-line {
   font-size: 0.85rem;
   color: var(--text-muted);
-  margin: 0.4rem 0 0.75rem;
+  margin: var(--space-2) 0 var(--space-3);
   word-break: break-all;
-}
-
-.source-line a {
-  color: var(--accent);
 }
 
 .card-actions {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: var(--space-3);
   flex-wrap: wrap;
-  margin-top: 0.5rem;
-  padding-top: 0.65rem;
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
 
 .inline-form {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .empty-state {
   color: var(--text-muted);
-  padding: 2rem 0;
+  padding: var(--space-8) 0;
   text-align: center;
 }
 
@@ -346,59 +163,340 @@ h1 {
   font-size: 0.85rem;
   color: var(--text-muted);
   font-style: italic;
-  margin: 0.25rem 0 0;
+  margin: var(--space-1) 0 0;
 }
 
 .item-error {
   font-size: 0.85rem;
-  color: var(--danger);
-  margin-top: 0.4rem;
+  color: var(--status-adverse-fg);
+  margin-top: var(--space-2);
 }
 
-.rough-edge {
+.officer-resolve-callout {
+  margin-top: var(--space-3);
+}
+.officer-resolve-callout .field {
+  margin-top: var(--space-2);
+  margin-bottom: 0;
+}
+
+/* --- inputs not already inside a .field (e.g. the reject-reason inline
+   input) still need baseline styling; base.css only styles `.field input`
+   directly, so this fills that one gap rather than redefining it. --- */
+input,
+textarea,
+select {
+  font: inherit;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+}
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent-500);
+}
+
+/* --- bulk-approve toolbar (review queue) --- */
+
+.bulk-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.bulk-toolbar-select-all {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.9rem;
+}
+
+.bulk-failed-list {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-6);
+  font-size: 0.85rem;
+}
+
+/* --- officer search picker --- */
+
+.officer-search-picker {
+  position: relative;
+}
+
+.officer-search-dropdown {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow: var(--shadow-md);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.officer-search-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text);
+}
+.officer-search-result:hover,
+.officer-search-result:focus-visible {
+  background: var(--bg-subtle);
+}
+
+.officer-search-result-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.officer-search-result-meta {
   font-size: 0.8rem;
-  color: var(--warn);
-  background: var(--warn-bg);
-  border-radius: 4px;
-  padding: 0.35rem 0.5rem;
-  margin-top: 0.5rem;
+  color: var(--text-muted);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --bg: #14161a;
-    --panel: #1c1f24;
-    --border: #33383f;
-    --text: #eceef0;
-    --text-muted: #9aa2ad;
-    --accent: #6f97f0;
-    --danger: #ff8a80;
-    --danger-bg: #3a1f1d;
-    --success: #7fd996;
-    --success-bg: #1c3324;
-    --warn-bg: #3a2f14;
-    --warn: #f2c14e;
-  }
+.officer-search-status {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
 
-  input,
-  textarea,
-  select {
-    background: #22262c;
-    color: var(--text);
-  }
+.officer-search-error {
+  color: var(--status-adverse-fg);
+}
 
-  .btn {
-    background: #22262c;
-    color: var(--text);
-  }
+.field-label-static {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
 
-  .btn:hover:not(:disabled) {
-    background: #2b3038;
-  }
+.officer-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+}
 
-  .badge-type {
-    background: #262c3a;
-    color: #b7c3e6;
-  }
+.officer-chip-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.officer-chip-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* --- chip list (incident form's selected officers) --- */
+
+.chip-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--accent-100);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.chip-remove {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  padding: 0;
+}
+.chip-remove:hover {
+  color: var(--status-adverse-fg);
+}
+
+.quick-add-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+
+.officer-picker-fieldset,
+fieldset.field {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+.officer-picker-fieldset legend,
+fieldset.field legend {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0 var(--space-1);
+}
+
+.checkbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.checkbox-list label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.field-row {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.field-row .field {
+  flex: 1 1 160px;
+}
+
+/* --- dashboard --- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+  margin: var(--space-4) 0 var(--space-6);
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.stat-tile-value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.stat-tile-value-cleared { color: var(--status-cleared-fg); }
+.stat-tile-value-neutral { color: var(--status-neutral-fg); }
+.stat-tile-value-adverse { color: var(--status-adverse-fg); }
+
+.stat-tile-label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.dashboard-summary {
+  font-size: 1rem;
+  margin: var(--space-2) 0 var(--space-6);
+}
+
+.dashboard-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* --- new-record tabs --- */
+
+.tab-list {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-6);
+}
+
+.tab-button {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.tab-button:hover {
+  color: var(--text);
+}
+.tab-button-active {
+  color: var(--accent-600);
+  border-bottom-color: var(--accent-500);
+}
+
+.tab-panel .card {
+  max-width: 640px;
+}
+
+.session-summary {
+  margin-top: var(--space-6);
+}
+
+/* --- audit log --- */
+
+.audit-filter {
+  max-width: 260px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.revision-diff {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: var(--space-2) 0;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
 }

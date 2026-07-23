@@ -52,7 +52,7 @@ export function DisputeCard({ dispute, onResolve }: Props) {
       <div className="card-header">
         <div>
           <div className="card-title">
-            {dispute.requesterName} <span className="badge badge-type">{dispute.requesterRole}</span>
+            {dispute.requesterName} <span className="badge badge-review">{dispute.requesterRole}</span>
           </div>
           <div className="note-text">
             Disputing: {targetLabel(dispute)} · submitted {formatDate(dispute.submittedAt)}
@@ -110,7 +110,7 @@ export function DisputeCard({ dispute, onResolve }: Props) {
               </button>
               <button
                 type="button"
-                className="btn"
+                className="btn btn-secondary"
                 onClick={() => {
                   setResolving(false);
                   setLocalError(null);
@@ -124,7 +124,11 @@ export function DisputeCard({ dispute, onResolve }: Props) {
         )}
       </div>
 
-      {localError && <div className="item-error">{localError}</div>}
+      {localError && (
+        <div className="item-error" role="alert">
+          {localError}
+        </div>
+      )}
     </article>
   );
 }

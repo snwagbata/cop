@@ -1,10 +1,16 @@
 import { useState } from "react";
-import type { ReviewQueueItem } from "@cop/shared-types";
+import type { OfficerSearchCandidate, ReviewQueueItem } from "@cop/shared-types";
+import { OfficerSearchPicker } from "./OfficerSearchPicker";
 
 interface Props {
   item: ReviewQueueItem;
   onApprove: (id: string, edits?: Record<string, unknown>) => Promise<void>;
   onReject: (id: string, reason: string) => Promise<void>;
+  /** Bulk-select support for the review-queue page's "bulk approve" action. Optional so
+   * this card can still be used/tested standalone without wiring selection up. */
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelected?: (id: string) => void;
 }
 
 const TIER_LABEL: Record<string, string> = {
@@ -14,11 +20,20 @@ const TIER_LABEL: Record<string, string> = {
   tier4_submitted_unverified: "Tier 4 — submitted/unverified",
 };
 
+// Reuses @cop/design-system's semantic status-badge vocabulary (adverse/
+// cleared/neutral/review) rather than one-off tier/confidence colors, so
+// "how trustworthy is this" reads the same way it does on the public site.
 const TIER_BADGE_CLASS: Record<string, string> = {
-  tier1_primary_legal_doc: "badge-tier1",
-  tier2_official_dataset: "badge-tier2",
-  tier3_established_news: "badge-tier3",
-  tier4_submitted_unverified: "badge-tier4",
+  tier1_primary_legal_doc: "badge-cleared",
+  tier2_official_dataset: "badge-cleared",
+  tier3_established_news: "badge-neutral",
+  tier4_submitted_unverified: "badge-adverse",
+};
+
+const CONFIDENCE_BADGE_CLASS: Record<string, string> = {
+  high: "badge-cleared",
+  medium: "badge-neutral",
+  low: "badge-adverse",
 };
 
 function formatDate(iso: string | null | undefined): string {
@@ -27,12 +42,19 @@ function formatDate(iso: string | null | undefined): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
 }
 
-export function ReviewQueueItemCard({ item, onApprove, onReject }: Props) {
+export function ReviewQueueItemCard({
+  item,
+  onApprove,
+  onReject,
+  selectable = false,
+  selected = false,
+  onToggleSelected,
+}: Props) {
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
-  const [officerIdInput, setOfficerIdInput] = useState("");
+  const [resolvedOfficer, setResolvedOfficer] = useState<OfficerSearchCandidate | null>(null);
 
   const { proposedRecord: rec, source, matchConfidence } = item;
 
@@ -40,13 +62,13 @@ export function ReviewQueueItemCard({ item, onApprove, onReject }: Props) {
 
   async function handleApprove() {
     setLocalError(null);
-    if (needsOfficerId && officerIdInput.trim() === "") {
-      setLocalError("Enter the officer's ID before approving — this incident isn't matched to an officer yet.");
+    if (needsOfficerId && !resolvedOfficer) {
+      setLocalError("Search for and select the officer before approving — this incident isn't matched yet.");
       return;
     }
     setBusy(true);
     try {
-      const edits = needsOfficerId ? { officerId: officerIdInput.trim() } : undefined;
+      const edits = needsOfficerId ? { officerId: resolvedOfficer!.id } : undefined;
       await onApprove(item.id, edits);
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : "Approval failed.");
@@ -76,12 +98,24 @@ export function ReviewQueueItemCard({ item, onApprove, onReject }: Props) {
   }
 
   return (
-    <article className="card" data-testid={`review-item-${item.id}`}>
+    <article className="card review-item-card" data-testid={`review-item-${item.id}`}>
       <div className="card-header">
+        {selectable && (
+          <label className="review-item-select">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => onToggleSelected?.(item.id)}
+              aria-label={`Select ${renderTitle(rec)} for bulk approve`}
+            />
+          </label>
+        )}
         <div>
           <div className="card-title">{renderTitle(rec)}</div>
-          <span className="badge badge-type">{rec.type === "officer_candidate" ? "New officer" : "New incident"}</span>{" "}
-          <span className={`badge badge-confidence-${matchConfidence}`}>match: {matchConfidence}</span>
+          <span className="badge badge-review">{rec.type === "officer_candidate" ? "New officer" : "New incident"}</span>{" "}
+          <span className={`badge ${CONFIDENCE_BADGE_CLASS[matchConfidence] ?? "badge-neutral"}`}>
+            match: {matchConfidence}
+          </span>
         </div>
       </div>
 
@@ -94,7 +128,7 @@ export function ReviewQueueItemCard({ item, onApprove, onReject }: Props) {
             <a href={source.url} target="_blank" rel="noreferrer">
               {source.url}
             </a>{" "}
-            <span className={`badge ${TIER_BADGE_CLASS[source.reliabilityTier] ?? ""}`}>
+            <span className={`badge ${TIER_BADGE_CLASS[source.reliabilityTier] ?? "badge-neutral"}`}>
               {TIER_LABEL[source.reliabilityTier] ?? source.reliabilityTier}
             </span>
           </>
@@ -106,20 +140,20 @@ export function ReviewQueueItemCard({ item, onApprove, onReject }: Props) {
       <div className="note-text">Submitted {formatDate(item.createdAt)}</div>
 
       {needsOfficerId && (
-        <div className="rough-edge">
-          This incident isn't matched to an existing officer. Enter the officer's ID to approve (a full
-          officer-search picker isn't built yet — known rough edge for this MVP).
-          <div className="field" style={{ marginTop: "0.4rem" }}>
-            <label htmlFor={`officer-id-${item.id}`}>Officer ID</label>
-            <input
-              id={`officer-id-${item.id}`}
-              type="text"
-              value={officerIdInput}
-              onChange={(e) => setOfficerIdInput(e.target.value)}
-              placeholder="e.g. off-204"
-              disabled={busy}
-            />
-          </div>
+        <div className="callout callout-info officer-resolve-callout">
+          This incident isn't matched to an existing officer yet. Search for them below to resolve it before
+          approving.
+          <OfficerSearchPicker
+            id={`officer-picker-${item.id}`}
+            label="Search for the officer"
+            mode="single"
+            disabled={busy}
+            onSelect={(candidate) => {
+              setResolvedOfficer(candidate);
+              setLocalError(null);
+            }}
+            onClear={() => setResolvedOfficer(null)}
+          />
         </div>
       )}
 
@@ -134,7 +168,11 @@ export function ReviewQueueItemCard({ item, onApprove, onReject }: Props) {
           </button>
         ) : (
           <div className="inline-form">
+            <label className="visually-hidden" htmlFor={`reject-reason-${item.id}`}>
+              Reason for rejection
+            </label>
             <input
+              id={`reject-reason-${item.id}`}
               type="text"
               placeholder="Reason for rejection"
               value={reason}
@@ -147,7 +185,7 @@ export function ReviewQueueItemCard({ item, onApprove, onReject }: Props) {
             </button>
             <button
               type="button"
-              className="btn"
+              className="btn btn-secondary"
               onClick={() => {
                 setRejecting(false);
                 setReason("");
@@ -161,7 +199,11 @@ export function ReviewQueueItemCard({ item, onApprove, onReject }: Props) {
         )}
       </div>
 
-      {localError && <div className="item-error">{localError}</div>}
+      {localError && (
+        <div className="item-error" role="alert">
+          {localError}
+        </div>
+      )}
     </article>
   );
 }

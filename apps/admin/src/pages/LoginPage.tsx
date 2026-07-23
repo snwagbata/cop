@@ -13,7 +13,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const from = (location.state as { from?: string } | null)?.from ?? "/review-queue";
+  const from = (location.state as { from?: string } | null)?.from ?? "/";
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -30,8 +30,8 @@ export function LoginPage() {
   }
 
   return (
-    <div className="login-shell">
-      <form className="login-card" onSubmit={handleSubmit}>
+    <main id="main" className="login-shell">
+      <form className="card login-card" onSubmit={handleSubmit}>
         <h1>COP Admin</h1>
         <p className="page-subtitle">Reviewer sign-in</p>
         {error && <ErrorBanner message={error} />}
@@ -61,6 +61,6 @@ export function LoginPage() {
           {busy ? "Signing in…" : "Sign in"}
         </button>
       </form>
-    </div>
+    </main>
   );
 }
