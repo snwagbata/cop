@@ -1,7 +1,13 @@
 import { Router } from "express";
-import type { DisputeRequesterRole } from "@cop/shared-types";
+import type {
+  CreatePublicDisputeRequest,
+  CreatePublicDisputeResponse,
+  Dispute,
+  DisputeRequesterRole,
+  DisputeStatusResponse,
+} from "@cop/shared-types";
 import { pool } from "../db.js";
-import { badRequest, sendError } from "../lib/errors.js";
+import { badRequest, notFound, sendError } from "../lib/errors.js";
 import { createRateLimiter } from "../middleware/rateLimit.js";
 
 export const disputesRouter = Router();
@@ -14,15 +20,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // production-hardened. 5 submissions / 10 minutes / IP.
 const disputeRateLimit = createRateLimiter({ windowMs: 10 * 60 * 1000, max: 5 });
 
-interface CreateDisputeBody {
-  incidentId?: string;
-  outcomeId?: string;
-  officerId?: string;
-  requesterName?: string;
-  requesterRole?: string;
-  claim?: string;
-  evidenceUrl?: string;
-}
+// Request body is untrusted network input, so every field is still validated
+// at runtime below even though CreatePublicDisputeRequest marks most as
+// required — Partial<> here just documents "this is the shape we expect,
+// not yet the shape we've verified."
+type CreateDisputeBody = Partial<CreatePublicDisputeRequest>;
 
 // POST /api/public/disputes
 // DESIGN.md §10: the public correction/takedown submission form. Validates
@@ -95,23 +97,23 @@ disputesRouter.post("/", disputeRateLimit, async (req, res, next) => {
     );
 
     const row = result.rows[0];
-    res.status(201).json({
-      dispute: {
-        id: row.id,
-        incidentId: row.incident_id,
-        outcomeId: row.outcome_id,
-        officerId: row.officer_id,
-        requesterName: row.requester_name,
-        requesterRole: row.requester_role,
-        claim: row.claim,
-        evidenceUrl: row.evidence_url,
-        submittedAt: row.submitted_at,
-        status: row.status,
-        resolutionNotes: null,
-        resolvedBy: null,
-        resolvedAt: null,
-      },
-    });
+    const dispute: Dispute = {
+      id: row.id,
+      incidentId: row.incident_id,
+      outcomeId: row.outcome_id,
+      officerId: row.officer_id,
+      requesterName: row.requester_name,
+      requesterRole: row.requester_role,
+      claim: row.claim,
+      evidenceUrl: row.evidence_url,
+      submittedAt: row.submitted_at,
+      status: row.status,
+      resolutionNotes: null,
+      resolvedBy: null,
+      resolvedAt: null,
+    };
+    const responseBody: CreatePublicDisputeResponse = { dispute };
+    res.status(201).json(responseBody);
   } catch (err) {
     const pgErr = err as { code?: string };
     if (pgErr && pgErr.code === "42501") {
@@ -135,6 +137,50 @@ disputesRouter.post("/", disputeRateLimit, async (req, res, next) => {
       );
       return;
     }
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/public/disputes/:id
+//
+// Status-check for someone who submitted a dispute to look up what happened
+// to it. Deliberately narrow response (DisputeStatusResponse: id/status/
+// submittedAt/resolvedAt only) — this id is a UUID handed to the submitter
+// at creation time, but the endpoint itself is public and unauthenticated,
+// so it must never leak requesterName/claim/evidenceUrl/resolutionNotes to
+// anyone else who has or guesses at the id.
+// ---------------------------------------------------------------------------
+disputesRouter.get("/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!UUID_RE.test(id)) {
+      throw badRequest("dispute id must be a valid UUID.");
+    }
+
+    const result = await pool.query<{
+      id: string;
+      status: DisputeStatusResponse["status"];
+      submitted_at: string;
+      resolved_at: string | null;
+    }>(
+      `SELECT id, status, submitted_at, resolved_at FROM disputes WHERE id = $1`,
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      throw notFound("Dispute");
+    }
+
+    const row = result.rows[0];
+    const body: DisputeStatusResponse = {
+      id: row.id,
+      status: row.status,
+      submittedAt: row.submitted_at,
+      resolvedAt: row.resolved_at,
+    };
+    res.json(body);
+  } catch (err) {
     next(err);
   }
 });

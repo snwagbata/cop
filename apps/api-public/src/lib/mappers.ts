@@ -1,4 +1,4 @@
-import type { Department, Source } from "@cop/shared-types";
+import type { Department, OfficerSearchCandidate, Source } from "@cop/shared-types";
 
 /** Row shape from a `SELECT d.*` (or explicitly-aliased equivalent) against `departments`. */
 export interface DepartmentRow {
@@ -39,5 +39,43 @@ export function mapSource(row: SourceRow): Source {
     publicationDate: row.publication_date,
     retrievedDate: row.retrieved_date,
     reliabilityTier: row.reliability_tier,
+  };
+}
+
+/**
+ * Row shape shared by any query that produces disambiguation-level officer
+ * fields (search, and the browse/list endpoint) — see OfficerSearchCandidate's
+ * docstring in shared-types for why this stays narrow (never incident/outcome
+ * data).
+ */
+export interface OfficerSearchRow {
+  id: string;
+  first_name: string;
+  last_name: string;
+  department_id: string;
+  department_name: string;
+  badge_number: string | null;
+  photo_url: string | null;
+  hire_date: string | null;
+  history_start: string | null;
+  history_end: string | null;
+}
+
+export function mapOfficerSearchCandidate(row: OfficerSearchRow): OfficerSearchCandidate {
+  return {
+    id: row.id,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    departmentId: row.department_id,
+    departmentName: row.department_name,
+    badgeNumber: row.badge_number,
+    // Fall back to {start: hire_date, end: null} when there's no matching
+    // officer_department_history row for the officer's current department
+    // (task spec / DESIGN.md §2's disambiguation contract).
+    activeDateRange: {
+      start: row.history_start ?? row.hire_date ?? "",
+      end: row.history_start ? row.history_end : null,
+    },
+    photoUrl: row.photo_url,
   };
 }

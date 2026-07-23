@@ -3,16 +3,24 @@ import type {
   GetOfficerResponse,
   Incident,
   IncidentOfficerRef,
+  ListOfficersResponse,
   Outcome,
   OfficerDepartmentHistoryEntry,
   OfficerDetail,
-  OfficerSearchCandidate,
+  ResolvedDisputeSummary,
   SearchOfficersResponse,
 } from "@cop/shared-types";
 import { STANDARD_OFFICER_PAGE_DISCLAIMER } from "@cop/shared-types";
 import { pool } from "../db.js";
 import { badRequest, notFound } from "../lib/errors.js";
-import { mapDepartment, mapSource, type DepartmentRow, type SourceRow } from "../lib/mappers.js";
+import {
+  mapDepartment,
+  mapOfficerSearchCandidate,
+  mapSource,
+  type DepartmentRow,
+  type OfficerSearchRow,
+  type SourceRow,
+} from "../lib/mappers.js";
 
 export const officersRouter = Router();
 
@@ -38,18 +46,7 @@ officersRouter.get("/search", async (req, res, next) => {
       throw badRequest("departmentId must be a valid UUID.");
     }
 
-    const result = await pool.query<{
-      id: string;
-      first_name: string;
-      last_name: string;
-      department_id: string;
-      department_name: string;
-      badge_number: string | null;
-      photo_url: string | null;
-      hire_date: string | null;
-      history_start: string | null;
-      history_end: string | null;
-    }>(
+    const result = await pool.query<OfficerSearchRow>(
       `SELECT
          o.id, o.first_name, o.last_name, o.department_id, d.name AS department_name,
          o.badge_number, o.photo_url, o.hire_date,
@@ -75,24 +72,66 @@ officersRouter.get("/search", async (req, res, next) => {
       [q, departmentId ?? null]
     );
 
-    const candidates: OfficerSearchCandidate[] = result.rows.map((row) => ({
-      id: row.id,
-      firstName: row.first_name,
-      lastName: row.last_name,
-      departmentId: row.department_id,
-      departmentName: row.department_name,
-      badgeNumber: row.badge_number,
-      // Fall back to {start: hire_date, end: null} when there's no matching
-      // officer_department_history row for the officer's current department
-      // (task spec / DESIGN.md §2's disambiguation contract).
-      activeDateRange: {
-        start: row.history_start ?? row.hire_date ?? "",
-        end: row.history_start ? row.history_end : null,
-      },
-      photoUrl: row.photo_url,
-    }));
+    const body: SearchOfficersResponse = { candidates: result.rows.map(mapOfficerSearchCandidate) };
+    res.json(body);
+  } catch (err) {
+    next(err);
+  }
+});
 
-    const body: SearchOfficersResponse = { candidates };
+// ---------------------------------------------------------------------------
+// GET /api/public/officers?departmentId=<optional>&page=<default 1>&pageSize=<default 25, cap 100>
+//
+// Browse/filter endpoint, distinct from /search above: no query-string
+// requirement, paginated, ordered alphabetically rather than by relevance.
+// Reuses the same OfficerSearchCandidate mapping/row shape as /search so the
+// two endpoints stay consistent about what disambiguation-level fields mean.
+// ---------------------------------------------------------------------------
+officersRouter.get("/", async (req, res, next) => {
+  try {
+    const departmentId = typeof req.query.departmentId === "string" ? req.query.departmentId : undefined;
+    if (departmentId && !UUID_RE.test(departmentId)) {
+      throw badRequest("departmentId must be a valid UUID.");
+    }
+
+    const pageRaw = typeof req.query.page === "string" ? Number.parseInt(req.query.page, 10) : NaN;
+    const page = Number.isInteger(pageRaw) && pageRaw >= 1 ? pageRaw : 1;
+
+    const pageSizeRaw = typeof req.query.pageSize === "string" ? Number.parseInt(req.query.pageSize, 10) : NaN;
+    const pageSize = Number.isInteger(pageSizeRaw) && pageSizeRaw >= 1 ? Math.min(pageSizeRaw, 100) : 25;
+
+    const offset = (page - 1) * pageSize;
+
+    const [rowsResult, countResult] = await Promise.all([
+      pool.query<OfficerSearchRow>(
+        `SELECT
+           o.id, o.first_name, o.last_name, o.department_id, d.name AS department_name,
+           o.badge_number, o.photo_url, o.hire_date,
+           h.start_date AS history_start, h.end_date AS history_end
+         FROM officers o
+         JOIN departments d ON d.id = o.department_id
+         LEFT JOIN LATERAL (
+           SELECT start_date, end_date
+           FROM officer_department_history
+           WHERE officer_id = o.id AND department_id = o.department_id
+           ORDER BY (end_date IS NULL) DESC, start_date DESC
+           LIMIT 1
+         ) h ON true
+         WHERE ($1::uuid IS NULL OR o.department_id = $1)
+         ORDER BY o.last_name ASC, o.first_name ASC
+         LIMIT $2 OFFSET $3`,
+        [departmentId ?? null, pageSize, offset]
+      ),
+      pool.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM officers o WHERE ($1::uuid IS NULL OR o.department_id = $1)`,
+        [departmentId ?? null]
+      ),
+    ]);
+
+    const body: ListOfficersResponse = {
+      officers: rowsResult.rows.map(mapOfficerSearchCandidate),
+      pageInfo: { page, pageSize, totalCount: Number(countResult.rows[0].count) },
+    };
     res.json(body);
   } catch (err) {
     next(err);
@@ -174,6 +213,7 @@ officersRouter.get("/:id", async (req, res, next) => {
       [id]
     );
     const incidentIds = incidentIdsResult.rows.map((r) => r.incident_id);
+    let outcomeIds: string[] = [];
 
     let incidents: Incident[] = [];
     if (incidentIds.length > 0) {
@@ -225,7 +265,7 @@ officersRouter.get("/:id", async (req, res, next) => {
         ),
       ]);
 
-      const outcomeIds = outcomesRes.rows.map((r) => r.id);
+      outcomeIds = outcomesRes.rows.map((r) => r.id);
       const outcomeCitationsRes = outcomeIds.length
         ? await pool.query<SourceRow & { citable_id: string }>(
             `SELECT s.id, s.source_type, s.url, s.publication_date, s.retrieved_date, s.reliability_tier, c.citable_id
@@ -293,6 +333,36 @@ officersRouter.get("/:id", async (req, res, next) => {
       }));
     }
 
+    // -- resolved disputes touching this officer or any of their incidents/
+    // outcomes (DESIGN.md §12 "right-of-reply excerpt") --------------------
+    const resolvedDisputesResult = await pool.query<{
+      status: ResolvedDisputeSummary["status"];
+      incident_id: string | null;
+      outcome_id: string | null;
+      officer_id: string | null;
+      resolution_notes: string | null;
+      resolved_at: string | null;
+    }>(
+      `SELECT status, incident_id, outcome_id, officer_id, resolution_notes, resolved_at
+       FROM disputes
+       WHERE status != 'open'
+         AND resolution_notes IS NOT NULL
+         AND resolved_at IS NOT NULL
+         AND (
+           officer_id = $1
+           OR incident_id = ANY($2::uuid[])
+           OR outcome_id = ANY($3::uuid[])
+         )`,
+      [id, incidentIds, outcomeIds]
+    );
+    const resolvedDisputes: ResolvedDisputeSummary[] = resolvedDisputesResult.rows.map((row) => ({
+      targetType: row.officer_id ? "officer" : row.incident_id ? "incident" : "outcome",
+      targetId: (row.officer_id ?? row.incident_id ?? row.outcome_id) as string,
+      status: row.status,
+      resolutionNotes: row.resolution_notes as string,
+      resolvedAt: row.resolved_at as string,
+    }));
+
     const departmentRow: DepartmentRow = {
       id: o.dept_id,
       name: o.dept_name,
@@ -314,13 +384,7 @@ officersRouter.get("/:id", async (req, res, next) => {
       photoUrl: o.photo_url,
       departmentHistory,
       incidents,
-      // TODO(resolvedDisputes): placeholder until the right-of-reply feature
-      // lands — query disputes where status != 'open' AND (officer_id = :id
-      // OR incident_id IN officer's incidents OR outcome_id IN officer's
-      // outcomes), mapped to ResolvedDisputeSummary. Added as a required
-      // shared-types field ahead of that work so downstream consumers
-      // (apps/web) can build against the real shape now.
-      resolvedDisputes: [],
+      resolvedDisputes,
       disclaimer: STANDARD_OFFICER_PAGE_DISCLAIMER,
     };
 
