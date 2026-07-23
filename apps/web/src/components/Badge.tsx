@@ -7,7 +7,11 @@ import type { BadgeCategory } from "../lib/badges";
  * sustained/dismissed/neutral distinction to be carried by a *consistent*
  * badge/color system, not text alone or one-off styling — so every caller
  * routes through this component rather than styling its own label.
+ *
+ * Colors come from @cop/design-system's `.badge-{category}` classes, which
+ * are themselves keyed off the `--status-*` tokens in tokens.css — this
+ * component never hardcodes a color.
  */
 export function Badge({ category, children }: { category: BadgeCategory; children: ReactNode }) {
-  return <span className={`badge badge--${category}`}>{children}</span>;
+  return <span className={`badge badge-${category}`}>{children}</span>;
 }

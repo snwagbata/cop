@@ -1,5 +1,40 @@
+import { useState } from "react";
 import type { Source } from "@cop/shared-types";
 import { formatDate, label } from "../lib/format";
+
+/** Plain-text citation format used by the "copy citation" button below. */
+function formatCitationText(source: Source): string {
+  const parts = [label(source.reliabilityTier), label(source.sourceType), source.url];
+  if (source.publicationDate) parts.push(`published ${formatDate(source.publicationDate)}`);
+  return parts.join(" · ");
+}
+
+function CopyCitationButton({ source }: { source: Source }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(formatCitationText(source));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API can be unavailable (e.g. insecure context); fail
+      // silently rather than throwing — this is a convenience nicety, not
+      // load-bearing functionality.
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="copy-citation-btn"
+      onClick={handleCopy}
+      aria-label={`Copy citation: ${formatCitationText(source)}`}
+    >
+      {copied ? "Copied" : "Copy citation"}
+    </button>
+  );
+}
 
 /**
  * Renders the sourcing for an incident or outcome. DESIGN.md §3/§4: this is
@@ -25,6 +60,7 @@ export function CitationList({ citations }: { citations: Source[] }) {
             view source
           </a>
           {source.publicationDate && <> · published {formatDate(source.publicationDate)}</>}
+          <CopyCitationButton source={source} />
         </li>
       ))}
     </ul>

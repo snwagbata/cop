@@ -7,7 +7,7 @@
  */
 export function DisclaimerBlock({ text }: { text: string }) {
   return (
-    <div className="disclaimer" role="note">
+    <div className="callout disclaimer" role="note">
       <span className="disclaimer__label">About this page</span>
       {text}
     </div>

@@ -5,6 +5,8 @@ import { ApiError, getOfficer } from "../lib/apiClient";
 import { DisclaimerBlock } from "../components/DisclaimerBlock";
 import { PhotoOrPlaceholder } from "../components/PhotoOrPlaceholder";
 import { IncidentCard } from "../components/IncidentCard";
+import { ResolvedDisputeNote } from "../components/ResolvedDisputeNote";
+import { findResolvedDisputes } from "../lib/resolvedDisputes";
 import { formatDateRange, label } from "../lib/format";
 
 type LoadState =
@@ -63,6 +65,7 @@ export function OfficerDetailPage() {
 
   const { officer } = state;
   const initials = `${officer.firstName[0] ?? ""}${officer.lastName[0] ?? ""}`.toUpperCase();
+  const officerLevelDisputes = findResolvedDisputes(officer.resolvedDisputes, "officer", officer.id);
 
   return (
     <div>
@@ -93,8 +96,10 @@ export function OfficerDetailPage() {
 
       <DisclaimerBlock text={officer.disclaimer} />
 
+      <ResolvedDisputeNote disputes={officerLevelDisputes} />
+
       <p>
-        <Link className="button secondary" to={`/disputes/new?officerId=${encodeURIComponent(officer.id)}`}>
+        <Link className="btn btn-secondary" to={`/disputes/new?officerId=${encodeURIComponent(officer.id)}`}>
           Dispute this officer's record
         </Link>
       </p>
@@ -124,7 +129,12 @@ export function OfficerDetailPage() {
           <p className="subtitle">No incidents on file for this officer.</p>
         ) : (
           officer.incidents.map((incident) => (
-            <IncidentCard key={incident.id} incident={incident} currentOfficerId={officer.id} />
+            <IncidentCard
+              key={incident.id}
+              incident={incident}
+              currentOfficerId={officer.id}
+              resolvedDisputes={officer.resolvedDisputes}
+            />
           ))
         )}
       </section>

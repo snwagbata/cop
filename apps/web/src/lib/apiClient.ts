@@ -11,9 +11,13 @@
  */
 import type {
   ApiErrorResponse,
+  CreatePublicDisputeRequest,
+  CreatePublicDisputeResponse,
+  DisputeStatusResponse,
   GetDepartmentStatsResponse,
   GetOfficerResponse,
   ListDepartmentsResponse,
+  ListOfficersResponse,
   SearchOfficersResponse,
 } from "@cop/shared-types";
 import { API_BASE_URL } from "./config";
@@ -75,23 +79,37 @@ export function getDepartmentStats(id: string): Promise<GetDepartmentStatsRespon
   return request<GetDepartmentStatsResponse>(`/api/public/departments/${encodeURIComponent(id)}/stats`);
 }
 
-/** Request body for POST /api/public/disputes — mirrors the shared Dispute
- * fields the API accepts on create (id/status/etc are server-assigned). */
-export interface SubmitDisputeRequest {
-  incidentId?: string;
-  outcomeId?: string;
-  officerId?: string;
-  requesterName: string;
-  requesterRole: "officer" | "department" | "attorney" | "subject" | "other";
-  claim: string;
-  evidenceUrl?: string;
-}
-
-/** POST /api/public/disputes */
-export function submitDispute(body: SubmitDisputeRequest): Promise<void> {
-  return request<void>("/api/public/disputes", {
+/** POST /api/public/disputes — request/response shapes now formalized in
+ * @cop/shared-types (CreatePublicDisputeRequest/Response) rather than a
+ * locally-declared interface. */
+export function submitDispute(body: CreatePublicDisputeRequest): Promise<CreatePublicDisputeResponse> {
+  return request<CreatePublicDisputeResponse>("/api/public/disputes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * GET /api/public/disputes/:id — dispute status-check page (task item 3).
+ * Deliberately returns only DisputeStatusResponse's narrow shape; see that
+ * type's doc comment in shared-types for why (must not leak requesterName/
+ * claim/evidenceUrl to anyone who merely has the id).
+ */
+export function getDisputeStatus(id: string): Promise<DisputeStatusResponse> {
+  return request<DisputeStatusResponse>(`/api/public/disputes/${encodeURIComponent(id)}`);
+}
+
+/**
+ * GET /api/public/officers — browse/paginate endpoint (task item 5), distinct
+ * from /officers/search's disambiguation-only contract. Used by the
+ * department "browse officers" view.
+ */
+export function listOfficers(params: { departmentId?: string; page?: number; pageSize?: number }): Promise<ListOfficersResponse> {
+  const query = new URLSearchParams();
+  if (params.departmentId) query.set("departmentId", params.departmentId);
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("pageSize", String(params.pageSize));
+  const qs = query.toString();
+  return request<ListOfficersResponse>(`/api/public/officers${qs ? `?${qs}` : ""}`);
 }

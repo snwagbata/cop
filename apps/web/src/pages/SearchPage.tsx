@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { OfficerSearchCandidate } from "@cop/shared-types";
 import { ApiError, searchOfficers } from "../lib/apiClient";
 import { CandidateCard } from "../components/CandidateCard";
@@ -68,7 +68,22 @@ export function SearchPage() {
 
   return (
     <div>
-      <h1 className="page-title">Search for an officer</h1>
+      <div className="mission">
+        <h1 className="page-title">COP — Officer Accountability Database</h1>
+        <p>
+          COP is a public-interest database that tracks law enforcement officers alongside documented incidents of
+          misconduct, contradicted incident reports, sustained complaints, lawsuits, and disciplinary outcomes —
+          sourced from public records, court filings, and news coverage. Every record links to the underlying
+          document it comes from.
+        </p>
+        <p>
+          This is not a ratings or scoring site, and it does not publish unverified allegations: every record you
+          find here traces to a citable source and has been through a review step before publication. See our{" "}
+          <Link to="/about">methodology page</Link> for how sourcing and review work.
+        </p>
+      </div>
+
+      <h2 className="page-title">Search for an officer</h2>
       <p className="subtitle">Search by name or badge number. Records shown here are drawn from public documents.</p>
 
       <form className="search-form" onSubmit={handleSubmit} role="search">
@@ -80,7 +95,7 @@ export function SearchPage() {
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Officer name or badge number"
         />
-        <button type="submit" disabled={state.status === "loading"}>
+        <button type="submit" className="btn btn-primary" disabled={state.status === "loading"}>
           Search
         </button>
       </form>

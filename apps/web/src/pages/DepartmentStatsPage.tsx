@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import type { Department, DepartmentStats } from "@cop/shared-types";
 import { ApiError, getDepartmentStats } from "../lib/apiClient";
 import { formatCentsAsCurrency, formatDate } from "../lib/format";
@@ -98,6 +98,12 @@ export function DepartmentStatsPage() {
         </div>
         <p className="stats-note">Figures last computed {formatDate(stats.lastComputedAt)}.</p>
       </section>
+
+      <p>
+        <Link className="btn btn-secondary" to={`/departments/${encodeURIComponent(department.id)}/officers`}>
+          Browse officers in this department
+        </Link>
+      </p>
     </div>
   );
 }

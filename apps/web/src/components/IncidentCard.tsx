@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
-import type { Incident } from "@cop/shared-types";
+import type { Incident, ResolvedDisputeSummary } from "@cop/shared-types";
 import { Badge } from "./Badge";
 import { CitationList } from "./CitationList";
 import { OutcomeCard } from "./OutcomeCard";
+import { ResolvedDisputeNote } from "./ResolvedDisputeNote";
 import { incidentStatusCategory } from "../lib/badges";
+import { findResolvedDisputes } from "../lib/resolvedDisputes";
 import { formatDate, label } from "../lib/format";
 
 /**
@@ -16,7 +18,17 @@ import { formatDate, label } from "../lib/format";
  *    citations, since outcomes can carry citations the parent incident
  *    doesn't (§4).
  */
-export function IncidentCard({ incident, currentOfficerId }: { incident: Incident; currentOfficerId?: string }) {
+export function IncidentCard({
+  incident,
+  currentOfficerId,
+  resolvedDisputes = [],
+}: {
+  incident: Incident;
+  currentOfficerId?: string;
+  /** Full resolvedDisputes list from the officer record; filtered here per-target (§12 right-of-reply). */
+  resolvedDisputes?: ResolvedDisputeSummary[];
+}) {
+  const incidentDisputes = findResolvedDisputes(resolvedDisputes, "incident", incident.id);
   return (
     <article className="incident-card">
       <div className="incident-card__top">
@@ -42,12 +54,14 @@ export function IncidentCard({ incident, currentOfficerId }: { incident: Inciden
       <p className="citation-heading">Sources for this incident</p>
       <CitationList citations={incident.citations} />
 
+      <ResolvedDisputeNote disputes={incidentDisputes} />
+
       {incident.outcomes.length > 0 && (
         <>
           <p className="citation-heading">Outcomes</p>
           <ul className="outcome-list">
             {incident.outcomes.map((outcome) => (
-              <OutcomeCard key={outcome.id} outcome={outcome} />
+              <OutcomeCard key={outcome.id} outcome={outcome} resolvedDisputes={resolvedDisputes} />
             ))}
           </ul>
         </>
@@ -55,7 +69,7 @@ export function IncidentCard({ incident, currentOfficerId }: { incident: Inciden
 
       <p style={{ marginTop: "0.75rem" }}>
         <Link
-          className="button secondary"
+          className="btn btn-secondary"
           to={`/disputes/new?incidentId=${encodeURIComponent(incident.id)}${
             currentOfficerId ? `&officerId=${encodeURIComponent(currentOfficerId)}` : ""
           }`}
