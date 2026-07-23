@@ -421,10 +421,16 @@ export interface CreateCitationRequest {
 /** Manual-entry responses all follow this shape: the created row, plus
  * confirmation a record_revisions entry was written (DESIGN.md §3's
  * evidentiary audit trail applies to manual entry exactly as it does to
- * review-queue approvals — there is no "off the record" write path). */
+ * review-queue approvals — there is no "off the record" write path).
+ * `revisionId` is omitted for record types record_revisions can't reference:
+ * its `record_type` CHECK constraint only allows officer/incident/outcome/
+ * source (DESIGN.md §4, migration 0011) — departments and citations aren't
+ * revision-tracked, the same precedent already applied to citations. Callers
+ * creating a department should expect `revisionId` to be absent, not treat
+ * it as a bug. */
 export interface CreateRecordResponse<T> {
   record: T;
-  revisionId: string;
+  revisionId?: string;
 }
 
 export interface CreateReviewerRequest {
