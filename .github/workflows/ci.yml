@@ -1,0 +1,115 @@
+name: CI
+
+# Runs on every push to every branch (not just PRs) — this project pushes
+# directly to feature branches without always going through a PR, and the
+# whole point of this workflow is that every change gets checked, not just
+# ones that happen to go through review first.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# A new push to the same branch cancels the still-running check for the
+# previous push — no point finishing a stale run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Everything that talks to Postgres, in one job so its steps run
+  # sequentially against one shared `cop_test` database without racing —
+  # see db/TESTING.md's "known limitation" section on why concurrent test
+  # runs against the same cop_test can genuinely corrupt each other. Each
+  # CI job gets its own fresh Postgres service container, so this job and
+  # the `frontend` job below never share a database with each other either.
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cop
+          POSTGRES_PASSWORD: cop_dev_only
+          POSTGRES_DB: cop_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # ubuntu-latest runner images have historically included the psql
+      # client, but pin the install explicitly rather than depend on that —
+      # a runner-image change silently breaking CI here would be a bad way
+      # to find out.
+      - name: Install psql client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Migrate cop_test
+        run: DATABASE_URL="postgres://cop:cop_dev_only@localhost:5432/cop_test" ./db/migrate.sh
+
+      - name: Seed cop_test (baseline every suite resets to — see db/TESTING.md)
+        run: DATABASE_URL="postgres://cop:cop_dev_only@localhost:5432/cop_test" ./db/seed.sh
+
+      - name: Build @cop/shared-types
+        run: npm run --workspace packages/shared-types build
+
+      - name: Test @cop/shared-types
+        run: npm run --workspace packages/shared-types test
+
+      - name: Test packages/db-tests (schema/constraint regression suite)
+        run: npm run --workspace packages/db-tests test
+
+      - name: Build + test apps/api-public
+        run: |
+          npm run --workspace apps/api-public build
+          npm run --workspace apps/api-public test
+
+      - name: Build + test apps/api-internal
+        run: |
+          npm run --workspace apps/api-internal build
+          npm run --workspace apps/api-internal test
+
+  # Both frontends are tested against mocked/fixture data, not a real
+  # database — no Postgres service needed here, and running it as a
+  # separate parallel job (rather than folding into `backend`) keeps the
+  # DB-dependent and DB-independent halves of the suite cleanly separated
+  # and lets both halves run at the same time instead of end-to-end.
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build @cop/shared-types
+        run: npm run --workspace packages/shared-types build
+
+      - name: Lint + build + test apps/web
+        run: |
+          npm run --workspace apps/web lint
+          npm run --workspace apps/web build
+          npm run --workspace apps/web test
+
+      - name: Lint + build + test apps/admin
+        run: |
+          npm run --workspace apps/admin lint
+          npm run --workspace apps/admin build
+          npm run --workspace apps/admin test
