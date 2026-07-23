@@ -82,22 +82,48 @@ actual permission-denied checks.
 
 ## What's built vs. not
 
-Built and verified end-to-end (migrations → seed → both APIs → both
-frontends, driven with a real headless browser, not just curl):
-officer search with mandatory disambiguation, officer detail pages with
-sourced incidents/outcomes/citations and the DESIGN.md §3 disclaimer/badge
-rules, department scorecards, public dispute submission, reviewer login,
-review-queue approve/reject, and dispute resolution.
+**MVP round** (schema + core loop), verified end-to-end with a real headless
+browser: officer search with mandatory disambiguation, officer detail pages
+with sourced incidents/outcomes/citations and the DESIGN.md §3 disclaimer/
+badge rules, department scorecards, public dispute submission, reviewer
+login, review-queue approve/reject, and dispute resolution.
 
-Not built: any real ingestion pipeline (decertification registry sync, news
-monitoring, court docket monitoring — DESIGN.md §5, Phase 2+), the officer
-disambiguation photo-verification review gate's UI (backend rule exists;
-no photo test data yet), a full officer-search picker in the admin app's
-"resolve unmatched officer" flow (currently a plain text ID input — a known,
-documented MVP rough edge), and anything from the DESIGN.md §12 backlog
-(multi-language, saved searches, FOIA tracker, etc).
+**Post-MVP build-out** (this round), also verified end-to-end, plus a visual
+redesign onto `packages/design-system` (minimal, high-UX: shared tokens,
+dark mode, accessibility pass) across both frontends:
+- Public API: paginated officer browse, the `resolvedDisputes` right-of-reply
+  query, a narrow public dispute-status-check endpoint.
+- Public web: proper landing page, About/Methodology page, dispute
+  status-check page, right-of-reply shown inline on records, officer browse
+  page, copy-citation, skip-link + keyboard-operable disambiguation picker.
+- Internal API: manual data entry (department/officer/incident/outcome/
+  source/citation, each writing `record_revisions`), reviewer management
+  (admin-role gated), audit log listing, weekly digest, bulk-approve.
+- Admin app: a real officer search-and-select picker (replacing the MVP's
+  plain-text-ID rough edge), a "Log a new record" manual-entry flow, a
+  Reviewers page, an Audit Log page, a weekly-digest Dashboard as the new
+  post-login landing page, and bulk-approve with per-item success/failure.
+
+Still not built: any real ingestion pipeline (decertification registry sync,
+news monitoring, court docket monitoring — DESIGN.md §5, Phase 2+), the
+officer disambiguation photo-verification review gate's UI (backend rule
+exists; no photo test data yet), and the rest of the DESIGN.md §12 backlog
+(multi-language, saved searches, FOIA tracker, vetted bulk API export,
+anonymous tip intake).
 
 Known follow-up: `npm audit` reports vulnerabilities in the `vite`/`vitest`/
 `esbuild` dev-dependency chain (`GHSA-67mh-4wv8-2f99`, a dev-server-only
 issue). Not fixed here since the available fix is a breaking `vite` major
 version bump that hasn't been tested against this codebase.
+
+## A note on parallel-agent verification debris
+
+Both build rounds used multiple background agents working in parallel git
+worktrees against this *same* shared local Postgres instance. Their live
+verification (logging in, approving records, submitting disputes) writes
+real rows into that shared database — every round has needed at least one
+full `TRUNCATE ... RESTART IDENTITY CASCADE` + `./db/seed.sh` reseed after
+merging, to clear test artifacts before the "seed data" can be trusted as
+actually matching `db/seed/0001_synthetic_sample_data.sql`. If officer/
+incident/dispute counts ever look off during development, reseed first
+before assuming something is broken.
