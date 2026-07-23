@@ -1,0 +1,19 @@
+{
+  "name": "@cop/db-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Automated regression suite for the COP database schema (db/migrations), run directly against Postgres with the pg client — no API service in the loop. See db/TESTING.md for the cop_test database convention this suite follows.",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.6",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.9"
+  }
+}
