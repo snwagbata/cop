@@ -7,10 +7,12 @@ Express, using the `pg` package for parameterized raw SQL — no ORM, matching
 the rest of this project.
 
 This service connects to Postgres as the `cop_public_api` role, which is
-granted `SELECT` only (see `db/migrations/0015_db_roles_and_grants.sql`), so
-every route in this app SELECTs, with one exception: `POST /api/public/disputes`
-attempts an `INSERT` into `disputes` — see **Known issue** below, because as
-currently granted that insert fails.
+granted `SELECT` only on most tables (see
+`db/migrations/0015_db_roles_and_grants.sql`), with one deliberate exception:
+`db/migrations/0016_public_disputes_grant.sql` additionally grants `SELECT,
+INSERT` on `disputes`, so `POST /api/public/disputes` can accept a public
+correction/takedown submission — `UPDATE` on `disputes` stays internal-only
+(only a reviewer can resolve one).
 
 ## Setup
 
@@ -55,47 +57,6 @@ on failure, with `400` for bad input and `404` for a missing officer/department.
 - `GET /api/public/departments` — full department list.
 - `GET /api/public/departments/:id/stats` — joins `departments` to the `department_stats` materialized view (migration `0013`). If the view has no row for a department (shouldn't happen post-refresh, but defensive), stats fields default to `0`.
 - `POST /api/public/disputes` — public correction/takedown submission (DESIGN.md §10). Body: `{incidentId?, outcomeId?, officerId?, requesterName, requesterRole, claim, evidenceUrl?}`; exactly one of `incidentId`/`outcomeId`/`officerId` must be set — validated in the app with a `400` before it would ever hit the DB's own `disputes_exactly_one_target` CHECK constraint. Deliberately does **not** flip `incidents.status` to `'disputed'` on creation (the schema has no prior-status column to revert to later; see code comment in `src/routes/disputes.ts`). Rate-limited (see below).
-
-## Known issue: `cop_public_api` cannot currently write to `disputes`
-
-**Verified against the running dev DB** (see the parent task's report for full
-curl transcripts): `db/migrations/0015_db_roles_and_grants.sql` grants
-`cop_public_api` `SELECT` only, on this explicit table list:
-
-```
-departments, officers, officer_department_history, incidents,
-incident_officers, outcomes, sources, citations, department_stats
-```
-
-`disputes` is not in that list — the migration's own comment says so
-explicitly ("No grants at all on review_queue, reviewers, reviewer_sessions,
-record_revisions, or disputes"). So `cop_public_api` has **no grant at all**
-on `disputes` — not `INSERT`, not even `SELECT`.
-
-A direct `psql` test as `cop_public_api` confirms:
-
-```
-INSERT INTO disputes (...) VALUES (...);
-ERROR:  permission denied for table disputes
-```
-
-This app's `POST /api/public/disputes` route is implemented correctly against
-the shared-types contract (input validation, exactly-one-target check, insert
-statement, response shape) and is what should run once the grant exists. Until
-then, it will return `500 server_misconfiguration` for every otherwise-valid
-request, and logs the underlying Postgres `42501` error server-side. This is
-intentional — the route does not silently swallow the failure or fake success.
-
-**Fix required outside this app**: `db/migrations/0015_db_roles_and_grants.sql`
-(or a new migration) needs to add:
-
-```sql
-GRANT SELECT, INSERT ON disputes TO cop_public_api;
-```
-
-This wasn't changed by this task, since it's shared database infrastructure
-also depended on by the parallel `api-internal` workstream — flagging it here
-rather than editing migrations unilaterally.
 
 ## Rate limiting (dev-only)
 

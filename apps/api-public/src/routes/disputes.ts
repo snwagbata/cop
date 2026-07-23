@@ -117,16 +117,15 @@ disputesRouter.post("/", disputeRateLimit, async (req, res, next) => {
   } catch (err) {
     const pgErr = err as { code?: string };
     if (pgErr && pgErr.code === "42501") {
-      // permission denied — the cop_public_api role lacks a grant it needs
-      // for this endpoint. See apps/api-public/README.md "Known issue" and
-      // the task verification report: migration 0015 does not currently
-      // grant INSERT (or even SELECT) on `disputes` to cop_public_api,
-      // despite DESIGN.md §10 describing public dispute submission as this
-      // service's one write path. Log full detail server-side; don't leak
-      // DB role/grant internals to the public response.
+      // Defensive: cop_public_api is granted SELECT+INSERT on disputes as of
+      // migration 0016, so this shouldn't fire in normal operation. Kept as
+      // a specific branch (rather than falling through to next(err)'s
+      // generic 500) so a future grant regression fails as a clean,
+      // recognizable 500 instead of leaking a raw Postgres permission error
+      // to the public response. Log full detail server-side either way.
       // eslint-disable-next-line no-console
       console.error(
-        "[disputes] INSERT failed with permission denied — cop_public_api likely lacks a grant on `disputes`.",
+        "[disputes] INSERT failed with permission denied — cop_public_api's grant on `disputes` may have regressed.",
         err
       );
       sendError(
