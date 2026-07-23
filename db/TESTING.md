@@ -48,3 +48,24 @@ have on `cop`. No separate role setup needed.
 - CI (`.github/workflows/`) provisions its own ephemeral `cop_test` per run
   via a Postgres service container — the convention above is what makes that
   possible without any test-specific code branching for "am I in CI."
+
+## Known limitation: local multi-agent contention
+
+The serial-execution convention above makes one test *suite* (one workspace's
+`npm run test`) safe against itself. It does **not** make multiple *separate*
+test suites — or multiple concurrent agent sessions each running their own
+`npm run test` — safe against each other, if they're pointed at the same
+literal `cop_test` database on the same local Postgres instance. Two
+independent background agents building test suites in this project (for
+`apps/api-public` and `packages/db-tests`) both hit real, reproducible
+`duplicate key`/`deadlock detected` failures caused by exactly this: a
+sibling agent's test run truncating/reseeding `cop_test` mid-run of another.
+
+This is a property of the local sandbox (multiple worktree-isolated agent
+sessions sharing one physical Postgres server), not of CI, where each run
+gets a genuinely fresh, isolated database via a service container — so it
+doesn't need fixing for CI to work correctly. For local development: **don't
+run more than one workspace's test suite against `cop_test` at the same
+time.** If you're not sure whether something else is using it, check for
+other `vitest`/`tsx` processes before running tests, or wait and retry on a
+failure that looks like DB contention rather than assuming it's a real bug.
