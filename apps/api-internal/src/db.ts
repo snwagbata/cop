@@ -16,3 +16,13 @@ export const pool = new Pool({ connectionString });
 export function query<T extends pg.QueryResultRow = any>(text: string, params?: unknown[]) {
   return pool.query<T>(text, params);
 }
+
+/**
+ * Minimal shape both `pool` and a checked-out `PoolClient` satisfy -- lets
+ * helper functions (e.g. writeRecordRevision) run either as part of a
+ * multi-statement transaction (pass the client) or standalone (pass `pool`)
+ * without depending on the concrete pg type.
+ */
+export type Queryable = {
+  query: <T extends pg.QueryResultRow = any>(text: string, params?: unknown[]) => Promise<{ rows: T[] }>;
+};

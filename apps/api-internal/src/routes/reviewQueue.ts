@@ -1,21 +1,26 @@
 import { Router } from "express";
 import type {
   ApproveReviewQueueItemRequest,
+  BulkApproveRequest,
+  BulkApproveResponse,
   EmploymentStatus,
+  GetReviewDigestResponse,
   IncidentCandidateProposal,
   IncidentType,
   ListReviewQueueResponse,
   MatchConfidence,
   OfficerCandidateProposal,
   RejectReviewQueueItemRequest,
+  ReviewDigest,
   ReviewQueueItem,
   ReviewQueueProposal,
   ReviewQueueStatus,
   Source,
 } from "@cop/shared-types";
-import { pool, query } from "../db.js";
+import { pool, query, type Queryable } from "../db.js";
 import { ApiError, sendError } from "../errors.js";
 import { asyncHandler } from "../asyncHandler.js";
+import { writeRecordRevision } from "../revisions.js";
 
 export const reviewQueueRouter = Router();
 
@@ -72,8 +77,6 @@ function toReviewQueueItem(row: ReviewQueueRow): ReviewQueueItem {
     createdAt: row.created_at,
   };
 }
-
-type Queryable = { query: <T = any>(text: string, params?: unknown[]) => Promise<{ rows: T[] }> };
 
 async function fetchReviewQueueItem(client: Queryable, id: string): Promise<ReviewQueueItem | null> {
   const result = await client.query<ReviewQueueRow>(`${REVIEW_QUEUE_SELECT} WHERE rq.id = $1`, [id]);
@@ -132,6 +135,161 @@ const VALID_EMPLOYMENT_STATUSES: EmploymentStatus[] = [
 
 const VALID_INCIDENT_TYPES: IncidentType[] = ["use_of_force", "false_report", "unlawful_arrest", "other"];
 
+/**
+ * Locks and promotes one pending/needs_more_info review_queue item into the
+ * public schema, writing the matching record_revisions row in the same
+ * transaction. Shared by both POST /:id/approve and POST /bulk-approve so
+ * the two entry points can't drift on validation/promotion behavior.
+ *
+ * Caller owns the transaction (BEGIN/COMMIT/ROLLBACK) and must pass a
+ * checked-out PoolClient, not the bare pool -- this function issues multiple
+ * statements that must land atomically together.
+ *
+ * Lock note: locks review_queue directly (`SELECT ... FOR UPDATE`), not the
+ * REVIEW_QUEUE_SELECT LEFT JOIN view -- Postgres rejects FOR UPDATE on the
+ * nullable side of an outer join (the real bug this codebase hit during MVP
+ * verification), so the full joined row is only ever read separately, after
+ * the plain-table lock succeeds.
+ */
+async function promoteReviewQueueItem(
+  client: Queryable,
+  id: string,
+  reviewerId: string,
+  edits: Record<string, unknown>,
+): Promise<void> {
+  const lockResult = await client.query<{ id: string; proposed_record: ReviewQueueProposal; status: ReviewQueueStatus }>(
+    `SELECT id, proposed_record, status FROM review_queue WHERE id = $1 FOR UPDATE`,
+    [id],
+  );
+  const existing = lockResult.rows[0];
+  if (!existing) {
+    throw new ApiError(404, "not_found", `No review_queue item with id ${id}.`);
+  }
+  if (existing.status !== "pending" && existing.status !== "needs_more_info") {
+    throw new ApiError(
+      400,
+      "already_reviewed",
+      `review_queue item ${id} has status "${existing.status}" and cannot be approved again.`,
+    );
+  }
+
+  const proposed = existing.proposed_record as ReviewQueueProposal;
+  // Field-level edits are applied on top of the proposed record before
+  // promotion, per ApproveReviewQueueItemRequest.edits.
+  const effective: Record<string, unknown> = { ...proposed, ...edits };
+
+  if (proposed.type === "officer_candidate") {
+    const officerProposal = proposed as OfficerCandidateProposal;
+    const departmentId = await resolveDepartmentId(client, effective.departmentName);
+
+    const firstName = (effective.firstName as string) ?? officerProposal.firstName;
+    const lastName = (effective.lastName as string) ?? officerProposal.lastName;
+    if (!firstName || !lastName) {
+      throw new ApiError(400, "invalid_request", "firstName and lastName are required.");
+    }
+    const badgeNumber = (effective.badgeNumber as string | undefined) ?? null;
+    const postCertificationId = (effective.postCertificationId as string | undefined) ?? null;
+
+    const employmentStatus = ((edits.employmentStatus as EmploymentStatus | undefined) ?? "active") as
+      | EmploymentStatus
+      | string;
+    if (!VALID_EMPLOYMENT_STATUSES.includes(employmentStatus as EmploymentStatus)) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        `edits.employmentStatus must be one of ${VALID_EMPLOYMENT_STATUSES.join(", ")}.`,
+      );
+    }
+
+    const insertResult = await client.query<{ id: string }>(
+      `INSERT INTO officers
+         (first_name, last_name, department_id, badge_number, employment_status, post_certification_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [firstName, lastName, departmentId, badgeNumber, employmentStatus, postCertificationId],
+    );
+    const officerId = insertResult.rows[0].id;
+
+    const diff = {
+      firstName,
+      lastName,
+      departmentId,
+      badgeNumber,
+      employmentStatus,
+      postCertificationId,
+    };
+    await writeRecordRevision(client, {
+      recordType: "officer",
+      recordId: officerId,
+      changeType: "create",
+      diff,
+      changedBy: reviewerId,
+    });
+  } else if (proposed.type === "incident_candidate") {
+    const officerId = (proposed as IncidentCandidateProposal).officerId ?? (edits.officerId as string | undefined);
+    if (!officerId) {
+      throw new ApiError(
+        400,
+        "officer_not_resolved",
+        "Cannot approve an incident_candidate without a resolved officer -- set proposedRecord.officerId " +
+          "or pass edits.officerId. Per DESIGN.md §6, ambiguous officer matches are never auto-resolved.",
+      );
+    }
+
+    const officerCheck = await client.query<{ id: string }>(`SELECT id FROM officers WHERE id = $1`, [
+      officerId,
+    ]);
+    if (!officerCheck.rows[0]) {
+      throw new ApiError(400, "invalid_request", `No officer found with id ${officerId}.`);
+    }
+
+    const departmentId = await resolveDepartmentId(client, effective.departmentName);
+
+    const incidentType = effective.incidentType as string | undefined;
+    if (!incidentType || !VALID_INCIDENT_TYPES.includes(incidentType as IncidentType)) {
+      throw new ApiError(400, "invalid_request", `incidentType must be one of ${VALID_INCIDENT_TYPES.join(", ")}.`);
+    }
+    const shortDescription = effective.shortDescription as string | undefined;
+    if (!shortDescription || !shortDescription.trim()) {
+      throw new ApiError(400, "invalid_request", "shortDescription is required.");
+    }
+    const date = effective.date as string | undefined;
+    if (!date) {
+      throw new ApiError(400, "invalid_request", "date is required.");
+    }
+
+    const incidentResult = await client.query<{ id: string }>(
+      `INSERT INTO incidents (department_id, date, incident_type, short_description)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [departmentId, date, incidentType, shortDescription],
+    );
+    const incidentId = incidentResult.rows[0].id;
+
+    await client.query(
+      `INSERT INTO incident_officers (incident_id, officer_id, involvement_role)
+       VALUES ($1, $2, 'primary')`,
+      [incidentId, officerId],
+    );
+
+    const diff = { departmentId, date, incidentType, shortDescription, officerId };
+    await writeRecordRevision(client, {
+      recordType: "incident",
+      recordId: incidentId,
+      changeType: "create",
+      diff,
+      changedBy: reviewerId,
+    });
+  } else {
+    throw new ApiError(400, "invalid_proposal_type", `Unrecognized proposed_record.type "${(proposed as { type?: string }).type}".`);
+  }
+
+  await client.query(
+    `UPDATE review_queue SET status = 'approved', reviewer_id = $1, reviewed_at = now() WHERE id = $2`,
+    [reviewerId, id],
+  );
+}
+
 reviewQueueRouter.post(
   "/:id/approve",
   asyncHandler(async (req, res) => {
@@ -143,143 +301,7 @@ reviewQueueRouter.post(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
-      // Lock review_queue directly (not the LEFT JOIN view -- Postgres
-      // rejects FOR UPDATE on the nullable side of an outer join) then
-      // pull the full joined row separately.
-      const lockResult = await client.query<{ id: string; proposed_record: ReviewQueueProposal; status: ReviewQueueStatus }>(
-        `SELECT id, proposed_record, status FROM review_queue WHERE id = $1 FOR UPDATE`,
-        [id],
-      );
-      const existing = lockResult.rows[0];
-      if (!existing) {
-        await client.query("ROLLBACK");
-        sendError(res, 404, "not_found", `No review_queue item with id ${id}.`);
-        return;
-      }
-      if (existing.status !== "pending" && existing.status !== "needs_more_info") {
-        await client.query("ROLLBACK");
-        sendError(
-          res,
-          400,
-          "already_reviewed",
-          `review_queue item ${id} has status "${existing.status}" and cannot be approved again.`,
-        );
-        return;
-      }
-
-      const proposed = existing.proposed_record as ReviewQueueProposal;
-      // Field-level edits are applied on top of the proposed record before
-      // promotion, per ApproveReviewQueueItemRequest.edits.
-      const effective: Record<string, unknown> = { ...proposed, ...edits };
-
-      if (proposed.type === "officer_candidate") {
-        const officerProposal = proposed as OfficerCandidateProposal;
-        const departmentId = await resolveDepartmentId(client, effective.departmentName);
-
-        const firstName = (effective.firstName as string) ?? officerProposal.firstName;
-        const lastName = (effective.lastName as string) ?? officerProposal.lastName;
-        if (!firstName || !lastName) {
-          throw new ApiError(400, "invalid_request", "firstName and lastName are required.");
-        }
-        const badgeNumber = (effective.badgeNumber as string | undefined) ?? null;
-        const postCertificationId = (effective.postCertificationId as string | undefined) ?? null;
-
-        const employmentStatus = ((edits.employmentStatus as EmploymentStatus | undefined) ?? "active") as
-          | EmploymentStatus
-          | string;
-        if (!VALID_EMPLOYMENT_STATUSES.includes(employmentStatus as EmploymentStatus)) {
-          throw new ApiError(
-            400,
-            "invalid_request",
-            `edits.employmentStatus must be one of ${VALID_EMPLOYMENT_STATUSES.join(", ")}.`,
-          );
-        }
-
-        const insertResult = await client.query<{ id: string }>(
-          `INSERT INTO officers
-             (first_name, last_name, department_id, badge_number, employment_status, post_certification_id)
-           VALUES ($1, $2, $3, $4, $5, $6)
-           RETURNING id`,
-          [firstName, lastName, departmentId, badgeNumber, employmentStatus, postCertificationId],
-        );
-        const officerId = insertResult.rows[0].id;
-
-        const diff = {
-          firstName,
-          lastName,
-          departmentId,
-          badgeNumber,
-          employmentStatus,
-          postCertificationId,
-        };
-        await client.query(
-          `INSERT INTO record_revisions (record_type, record_id, change_type, diff, changed_by)
-           VALUES ('officer', $1, 'create', $2, $3)`,
-          [officerId, JSON.stringify(diff), reviewer.id],
-        );
-      } else if (proposed.type === "incident_candidate") {
-        const officerId = (proposed as IncidentCandidateProposal).officerId ?? (edits.officerId as string | undefined);
-        if (!officerId) {
-          throw new ApiError(
-            400,
-            "officer_not_resolved",
-            "Cannot approve an incident_candidate without a resolved officer -- set proposedRecord.officerId " +
-              "or pass edits.officerId. Per DESIGN.md §6, ambiguous officer matches are never auto-resolved.",
-          );
-        }
-
-        const officerCheck = await client.query<{ id: string }>(`SELECT id FROM officers WHERE id = $1`, [
-          officerId,
-        ]);
-        if (!officerCheck.rows[0]) {
-          throw new ApiError(400, "invalid_request", `No officer found with id ${officerId}.`);
-        }
-
-        const departmentId = await resolveDepartmentId(client, effective.departmentName);
-
-        const incidentType = effective.incidentType as string | undefined;
-        if (!incidentType || !VALID_INCIDENT_TYPES.includes(incidentType as IncidentType)) {
-          throw new ApiError(400, "invalid_request", `incidentType must be one of ${VALID_INCIDENT_TYPES.join(", ")}.`);
-        }
-        const shortDescription = effective.shortDescription as string | undefined;
-        if (!shortDescription || !shortDescription.trim()) {
-          throw new ApiError(400, "invalid_request", "shortDescription is required.");
-        }
-        const date = effective.date as string | undefined;
-        if (!date) {
-          throw new ApiError(400, "invalid_request", "date is required.");
-        }
-
-        const incidentResult = await client.query<{ id: string }>(
-          `INSERT INTO incidents (department_id, date, incident_type, short_description)
-           VALUES ($1, $2, $3, $4)
-           RETURNING id`,
-          [departmentId, date, incidentType, shortDescription],
-        );
-        const incidentId = incidentResult.rows[0].id;
-
-        await client.query(
-          `INSERT INTO incident_officers (incident_id, officer_id, involvement_role)
-           VALUES ($1, $2, 'primary')`,
-          [incidentId, officerId],
-        );
-
-        const diff = { departmentId, date, incidentType, shortDescription, officerId };
-        await client.query(
-          `INSERT INTO record_revisions (record_type, record_id, change_type, diff, changed_by)
-           VALUES ('incident', $1, 'create', $2, $3)`,
-          [incidentId, JSON.stringify(diff), reviewer.id],
-        );
-      } else {
-        throw new ApiError(400, "invalid_proposal_type", `Unrecognized proposed_record.type "${(proposed as { type?: string }).type}".`);
-      }
-
-      await client.query(
-        `UPDATE review_queue SET status = 'approved', reviewer_id = $1, reviewed_at = now() WHERE id = $2`,
-        [reviewer.id, id],
-      );
-
+      await promoteReviewQueueItem(client, id, reviewer.id, edits);
       await client.query("COMMIT");
 
       const updated = await fetchReviewQueueItem(pool, id);
@@ -337,5 +359,170 @@ reviewQueueRouter.post(
 
     const updated = await fetchReviewQueueItem(pool, id);
     res.status(200).json({ item: updated });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/internal/review-queue/digest?days=<default 7>
+//
+// DESIGN.md §7's weekly-digest feature ("12 new candidate records this week,
+// 9 auto-matched with high confidence, 3 need your input"). highConfidence-
+// Count and needsAttentionCount are both subsets of newCount (i.e. of the
+// records *created* in the window) -- that's the reading that makes
+// DESIGN.md's own example arithmetic work (9 + 3 = 12), not an independent,
+// window-scoped count of the whole backlog. approvedCount/rejectedCount use
+// reviewed_at for their window filter instead (a record approved this week
+// may have been created long before it). openDisputeCount is a current
+// backlog snapshot, not scoped to the window at all.
+// ---------------------------------------------------------------------------
+reviewQueueRouter.get(
+  "/digest",
+  asyncHandler(async (req, res) => {
+    const daysRaw = typeof req.query.days === "string" ? Number.parseInt(req.query.days, 10) : NaN;
+    const days = Number.isInteger(daysRaw) && daysRaw >= 1 ? daysRaw : 7;
+
+    const periodEnd = new Date();
+    const periodStart = new Date(periodEnd.getTime() - days * 24 * 60 * 60 * 1000);
+    const periodStartIso = periodStart.toISOString();
+    const periodEndIso = periodEnd.toISOString();
+
+    const [newRes, highRes, attnRes, apprRes, rejRes, disputeRes] = await Promise.all([
+      query<{ count: string }>(
+        `SELECT count(*) FROM review_queue WHERE created_at >= $1 AND created_at <= $2`,
+        [periodStartIso, periodEndIso],
+      ),
+      query<{ count: string }>(
+        `SELECT count(*) FROM review_queue WHERE created_at >= $1 AND created_at <= $2 AND match_confidence = 'high'`,
+        [periodStartIso, periodEndIso],
+      ),
+      query<{ count: string }>(
+        `SELECT count(*) FROM review_queue
+          WHERE created_at >= $1 AND created_at <= $2
+            AND status = 'pending' AND match_confidence IN ('medium', 'low')`,
+        [periodStartIso, periodEndIso],
+      ),
+      query<{ count: string }>(
+        `SELECT count(*) FROM review_queue WHERE status = 'approved' AND reviewed_at >= $1 AND reviewed_at <= $2`,
+        [periodStartIso, periodEndIso],
+      ),
+      query<{ count: string }>(
+        `SELECT count(*) FROM review_queue WHERE status = 'rejected' AND reviewed_at >= $1 AND reviewed_at <= $2`,
+        [periodStartIso, periodEndIso],
+      ),
+      query<{ count: string }>(`SELECT count(*) FROM disputes WHERE status = 'open'`),
+    ]);
+
+    const digest: ReviewDigest = {
+      periodStart: periodStartIso,
+      periodEnd: periodEndIso,
+      newCount: Number(newRes.rows[0].count),
+      highConfidenceCount: Number(highRes.rows[0].count),
+      needsAttentionCount: Number(attnRes.rows[0].count),
+      approvedCount: Number(apprRes.rows[0].count),
+      rejectedCount: Number(rejRes.rows[0].count),
+      openDisputeCount: Number(disputeRes.rows[0].count),
+    };
+
+    const response: GetReviewDigestResponse = { digest };
+    res.status(200).json(response);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// POST /api/internal/review-queue/bulk-approve
+//
+// DESIGN.md §7's "bulk-approve a whole batch from a single trusted source
+// after spot-checking a sample." Enforces the tier1/tier2-source +
+// high-match-confidence gate that one-click approval requires (§4, §7) --
+// the pre-existing single-item /:id/approve route doesn't itself gate on
+// reliability_tier/match_confidence, so there's no existing check to
+// literally copy; this implements DESIGN.md's stated rule directly rather
+// than inventing a different one, and BulkApproveRequest's shared-types doc
+// comment specifies this exact rule for this exact endpoint. Each id is
+// checked and promoted in its own transaction so one failure can't roll
+// back another id's success.
+// ---------------------------------------------------------------------------
+const BULK_APPROVE_ELIGIBLE_TIERS = new Set(["tier1_primary_legal_doc", "tier2_official_dataset"]);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+reviewQueueRouter.post(
+  "/bulk-approve",
+  asyncHandler(async (req, res) => {
+    const body = (req.body ?? {}) as Partial<BulkApproveRequest>;
+    const reviewer = req.reviewer!;
+    const reviewQueueIds = Array.isArray(body.reviewQueueIds)
+      ? body.reviewQueueIds.filter((id): id is string => typeof id === "string")
+      : [];
+
+    if (reviewQueueIds.length === 0) {
+      sendError(res, 400, "invalid_request", "reviewQueueIds is required and must be a non-empty array.");
+      return;
+    }
+
+    const approved: string[] = [];
+    const failed: { id: string; error: string }[] = [];
+
+    for (const id of reviewQueueIds) {
+      if (!UUID_RE.test(id)) {
+        failed.push({ id, error: "id must be a valid UUID." });
+        continue;
+      }
+
+      // Eligibility check (DESIGN.md §4/§7: tier1/tier2 source + high match
+      // confidence only) happens up front, outside any transaction -- these
+      // fields are never mutated by anything else in this API once a
+      // review_queue row is created, so there's no meaningful race to guard
+      // against by folding this into promoteReviewQueueItem's own lock.
+      const eligibility = await query<{
+        status: ReviewQueueStatus;
+        match_confidence: MatchConfidence;
+        reliability_tier: string | null;
+      }>(
+        `SELECT rq.status, rq.match_confidence, s.reliability_tier
+           FROM review_queue rq
+           LEFT JOIN sources s ON s.id = rq.source_id
+          WHERE rq.id = $1`,
+        [id],
+      );
+      const row = eligibility.rows[0];
+      if (!row) {
+        failed.push({ id, error: `No review_queue item with id ${id}.` });
+        continue;
+      }
+      if (row.status !== "pending" && row.status !== "needs_more_info") {
+        failed.push({ id, error: `Item has status "${row.status}" and cannot be approved again.` });
+        continue;
+      }
+      if (row.match_confidence !== "high") {
+        failed.push({
+          id,
+          error: `Bulk approval requires match_confidence "high" (got "${row.match_confidence}").`,
+        });
+        continue;
+      }
+      if (!row.reliability_tier || !BULK_APPROVE_ELIGIBLE_TIERS.has(row.reliability_tier)) {
+        failed.push({
+          id,
+          error: `Bulk approval requires a tier1/tier2 source (got "${row.reliability_tier ?? "none"}").`,
+        });
+        continue;
+      }
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await promoteReviewQueueItem(client, id, reviewer.id, {});
+        await client.query("COMMIT");
+        approved.push(id);
+      } catch (err) {
+        await client.query("ROLLBACK");
+        failed.push({ id, error: err instanceof ApiError ? err.message : "Unexpected error while promoting this item." });
+      } finally {
+        client.release();
+      }
+    }
+
+    const response: BulkApproveResponse = { approved, failed };
+    res.status(200).json(response);
   }),
 );
