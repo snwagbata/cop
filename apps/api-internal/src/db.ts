@@ -6,7 +6,11 @@ const connectionString =
   process.env.DATABASE_URL ??
   "postgres://cop_internal_api:cop_internal_dev_only@localhost:5432/cop";
 
-export const pool = new Pool({ connectionString });
+// See the identical comment in apps/api-public/src/db.ts — hosted Postgres
+// needs SSL, local dev doesn't, gated behind an explicit env var.
+const useSsl = process.env.PGSSLMODE === "require";
+
+export const pool = new Pool({ connectionString, ssl: useSsl ? { rejectUnauthorized: false } : undefined });
 
 /**
  * Convenience wrapper so callers don't juggle pool.connect()/release()
