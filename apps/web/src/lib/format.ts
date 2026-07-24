@@ -61,6 +61,7 @@ const LABELS: Record<string, string> = {
   public_records_response: "Public Records Response",
   official_dataset: "Official Dataset",
   decertification_registry: "Decertification Registry",
+  tip_submission: "Public Tip Submission",
   // reliability tier
   tier1_primary_legal_doc: "Tier 1 — Primary Legal Document",
   tier2_official_dataset: "Tier 2 — Official Dataset",

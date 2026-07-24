@@ -4,7 +4,8 @@ import { formatDate, label } from "../lib/format";
 
 /** Plain-text citation format used by the "copy citation" button below. */
 function formatCitationText(source: Source): string {
-  const parts = [label(source.reliabilityTier), label(source.sourceType), source.url];
+  const parts = [label(source.reliabilityTier), label(source.sourceType)];
+  if (source.url) parts.push(source.url);
   if (source.publicationDate) parts.push(`published ${formatDate(source.publicationDate)}`);
   return parts.join(" · ");
 }
@@ -56,9 +57,13 @@ export function CitationList({ citations }: { citations: Source[] }) {
           {" · "}
           {label(source.sourceType)}
           {" · "}
-          <a href={source.url} target="_blank" rel="noopener noreferrer">
-            view source
-          </a>
+          {source.url ? (
+            <a href={source.url} target="_blank" rel="noopener noreferrer">
+              view source
+            </a>
+          ) : (
+            <span className="citation__no-link">no external link (text-only submission)</span>
+          )}
           {source.publicationDate && <> · published {formatDate(source.publicationDate)}</>}
           <CopyCitationButton source={source} />
         </li>
