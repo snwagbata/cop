@@ -10,8 +10,8 @@ public-interest project with no funding model, so "high powered" here means
 Every pipeline in this doc ends the same way regardless of source: a row in
 `sources` and a row in `review_queue`. Nothing ever writes to a public-facing
 table directly — that invariant (DESIGN.md §3/§7) doesn't change here, it's
-just now fed by six automated pipelines instead of the admin app's manual
-entry form and the tip-intake form.
+just now fed by several automated (or crowdsourced) pipelines instead of
+just the admin app's manual entry form and the tip-intake form.
 
 ## 1. Cost philosophy
 
@@ -52,6 +52,17 @@ a cron schedule, connecting directly to Postgres via `cop_internal_api`
 (same role the admin API uses — no new DB role needed). Shared logic lives in
 a new workspace, `packages/ingestion-lib`:
 
+**Not every source is poll-based, though.** Where a source can push instead
+(CourtListener saved-search alerts, §3.1; the "suggest a source" form, §3.9),
+there's no cron schedule at all — the item arrives via a webhook/POST
+request to one new lightweight route bolted onto the already-running
+`apps/api-internal` service (genuinely free marginal cost, since that
+service is already deployed and always-on; no second host to stand up just
+to receive webhooks). From that route onward, a pushed item goes through the
+exact same normalize → dedupe → pre-filter → [LLM] → match → queue shape as
+a polled one — the only thing that differs between "push" and "poll" sources
+is what triggers step one.
+
 ```
 fetch (source-specific)
   → normalize (source-specific → a common CandidateItem shape)
@@ -89,10 +100,14 @@ ALTER TABLE sources ADD COLUMN external_ref text;
 CREATE UNIQUE INDEX sources_source_type_external_ref_idx
     ON sources (source_type, external_ref) WHERE external_ref IS NOT NULL;
 
--- Per-run audit log — required for debugging six unattended cron jobs.
--- Without this, a silently-failing scraper (a state registry changes its
--- HTML structure, an API starts 403ing) has no visibility until someone
--- notices the review queue went quiet for that source.
+-- Per-run audit log — required for debugging several unattended, mostly
+-- unmonitored pipelines. Without this, a silently-failing scraper (a state
+-- registry changes its HTML structure, an API starts 403ing) has no
+-- visibility until someone notices the review queue went quiet for that
+-- source. Applies to poll-based pipelines only — the push-based ones
+-- (§3.1's CourtListener alerts, §3.9's tip form) log per-request instead of
+-- per-run, so a row here with a NULL finished_at persisting past its
+-- expected schedule is itself the signal something's wrong.
 CREATE TABLE ingestion_runs (
     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     source_type      text NOT NULL,
@@ -123,7 +138,7 @@ page reading from Postgres, same as everything else in the admin app).
 
 ## 3. Per-source design
 
-### 3.1 CourtListener / RECAP (§1983 filings) — build first
+### 3.1 Court dockets — CourtListener/RECAP (federal) + Juriscraper (state) — build first
 
 **Why first:** DESIGN.md's own table already calls this "structured,
 low-noise, highest value-per-effort," and it's the cleanest fit for a
@@ -133,10 +148,14 @@ across RECAP-available federal filings. This is explicitly the free
 alternative to raw PACER (which charges per page) that DESIGN.md already
 calls out.
 
-- **Fetch**: CourtListener's search API, querying for `nature_of_suit` civil
-  rights filings (§1983) with department-name keyword matching, using each
-  `ingestion_configs` row's list of watched department/jurisdiction names.
-  Free API key, no cost.
+**Federal — CourtListener/RECAP, push not poll:**
+- **Fetch**: instead of polling CourtListener's search API on a schedule,
+  create a saved search per watched department/jurisdiction (`nature_of_suit`
+  civil rights filings, §1983) and let CourtListener notify on match — lower
+  load on their API, closer to real-time than a daily poll, still free.
+  Delivered as a webhook/RSS to the shared receiver route described in §2.
+  Fall back to scheduled polling of the search API only if their alerting
+  doesn't cover a given jurisdiction well enough in practice.
 - **Extraction**: docket metadata (parties, filing date, court, docket
   number) comes back structured — no LLM needed for the citation itself.
   Officer name extraction from the docket text *is* unstructured (defendant
@@ -150,6 +169,19 @@ calls out.
 - **Dedup key**: CourtListener's docket id.
 - **Reliability tier**: `tier1_primary_legal_doc` (it's literally a court
   filing).
+
+**State courts — Juriscraper, not a bespoke scraper per state:** RECAP only
+covers federal courts, and most misconduct-relevant civil suits against
+individual officers are filed in state court, not federal. Rather than
+writing state-court scrapers from scratch, reuse **Juriscraper** — an
+open-source library maintained by the Free Law Project (the same
+organization behind CourtListener/RECAP) with scrapers already written for
+dozens of state court systems. Run it as a subprocess from the pipeline
+script, normalize its output into the same `CandidateItem` shape as the
+federal path, and feed it through the identical LLM-extraction step above.
+This is the single biggest "don't reinvent the wheel" win in this whole
+design — building state-court coverage from zero would otherwise be its own
+multi-month project.
 
 ### 3.2 State decertification registries
 
@@ -182,16 +214,32 @@ match confidence, not just its own data.
   government sites, not adversarial scraping targets, but courtesy avoids
   ever getting IP-blocked and keeps this in clearly-fine legal territory
   (public records, not circumventing any access control).
+- **Also watch city/county Open Data portals, not just state registries**:
+  several major cities run their own civilian complaint review boards with
+  public data (NYC's CCRB, Chicago's COPA, Philadelphia's PAB) published
+  through their city's Open Data portal — usually Socrata-based, with a free
+  public API. Structurally identical pipeline to a state registry (fetch,
+  no LLM extraction needed, `tier2_official_dataset`), just at the city
+  level instead of the state level, and often *better* structured than a
+  state's own registry since these are purpose-built oversight datasets.
 
-### 3.3 Existing open datasets (LLEAD, Police Records Access Project, National Police Index)
+### 3.3 Existing open datasets (LLEAD, Police Records Access Project, National Police Index, Washington Post police-shootings, Mapping Police Violence, Fatal Encounters)
 
 **Why third:** the easiest pipeline in this entire doc — these projects
 already did the entity-resolution work. This is a periodic bulk-diff-import
-job, not really a "monitoring" pipeline.
+job, not really a "monitoring" pipeline. Worth naming the concrete sources
+rather than leaving this generic:
+- **`washingtonpost/data-police-shootings`** — the Washington Post's own
+  actively-maintained public GitHub repo, CSV, no API key, trivial to sync
+  (a periodic `git pull` + diff is genuinely all this pipeline needs).
+- **Mapping Police Violence** and **Fatal Encounters** — independent,
+  actively-maintained open datasets, fatal-incident focus.
+- **LLEAD, Police Records Access Project, National Police Index** — broader
+  misconduct-record aggregators, DESIGN.md's original picks.
 
 - **Fetch**: whatever bulk export format each project publishes (CSV/JSON
-  dumps, sometimes a real API). Weekly or monthly cadence — these datasets
-  don't change fast.
+  dumps, a GitHub repo, sometimes a real API). Weekly or monthly cadence —
+  these datasets don't change fast.
 - **Extraction**: none — already structured. $0 LLM cost, always.
 - **Dedup key**: upstream project's own row id, namespaced by which project.
 - **Reliability tier**: `tier2_official_dataset` (treat these as vetted
@@ -266,7 +314,38 @@ leverage-per-effort here is inherently lower than the sources above.
   human confirms a document actually arrived; this pipeline only ever
   creates a *task*, never a candidate record, until then.
 
-### 3.6 Internal affairs findings (PDFs) — defer
+### 3.6 DocumentCloud
+
+**Why this matters more than its position in the list suggests:**
+DocumentCloud (run by the same nonprofit lineage as MuckRock — journalism
+infrastructure, not a generic document host) is where journalists already
+upload primary-source documents they've obtained, including police
+misconduct files, disciplinary records, and FOIA responses — with OCR
+already done and full-text search exposed through a free API. This is
+effectively free, pre-vetted source discovery: instead of this project
+doing its own OCR/extraction work on a raw PDF (§3.7 below), a meaningful
+fraction of the relevant documents may already exist on DocumentCloud in
+searchable form, uploaded by someone who's already done the hard part.
+
+- **Fetch**: DocumentCloud's search API, queried per watched department
+  name, on a weekly cadence (this is a slow-moving source — new documents
+  don't appear constantly).
+- **Extraction**: same LLM structured-extraction step as news monitoring
+  (§3.4) — DocumentCloud gives full OCR'd text, not just an excerpt, so
+  extraction quality here should actually be *better* than the news
+  pipeline's short-excerpt approach.
+- **Dedup key**: DocumentCloud's own document id.
+- **Reliability tier**: depends on the underlying document — a court filing
+  hosted there is still `tier1_primary_legal_doc`, an internal-affairs
+  finding is closer to `tier2_official_dataset`; carry through whatever the
+  uploading journalist tagged it as if DocumentCloud exposes that, otherwise
+  default conservatively to the lower tier and let a reviewer confirm.
+- **Practical effect on §3.7**: this substantially shrinks that pipeline's
+  real scope — the OCR/extraction problem there only needs solving for
+  documents that *aren't* already on DocumentCloud, which is a smaller and
+  less urgent set than "all internal-affairs PDFs everywhere."
+
+### 3.7 Internal affairs findings (PDFs) — defer
 
 **Why last:** DESIGN.md already calls this "manual-heavy... format varies
 wildly by department," and that doesn't change. Free OCR (Tesseract, run
@@ -275,36 +354,69 @@ text from a PDF, but turning "raw OCR'd text of an arbitrary internal-affairs
 PDF" into a structured candidate reliably is a much harder extraction problem
 than news-article snippets, and this project doesn't have real intake volume
 for it yet (no pipeline is feeding it PDFs today — that only starts happening
-once FOIA fulfillments in §3.5 start arriving). Recommend deferring actual
-build work here until there's a real backlog of PDFs to process, and revisit
-with whatever's learned from the news-monitoring extraction pipeline (§3.4)
-first, since the LLM-extraction pattern transfers directly.
+once FOIA fulfillments in §3.5 start arriving, and even then §3.6 covers a
+meaningful chunk of it for free). Recommend deferring actual build work here
+until there's a real backlog of PDFs DocumentCloud doesn't already cover,
+and revisit with whatever's learned from the news-monitoring extraction
+pipeline (§3.4) first, since the LLM-extraction pattern transfers directly.
 
-### 3.7 Body cam footage / tips — already built
+### 3.8 Body cam footage / tips — already built
 
 Covered by the tip-intake feature (DESIGN.md §12, shipped this session) —
 included here only for completeness against DESIGN.md §5's original table.
 No further pipeline work needed; tips already land in `review_queue` the
 same way every other source in this doc will.
 
+### 3.9 "Suggest a source" — extend tip intake, don't rebuild it
+
+**The idea:** most of this project's actual audience — attorneys,
+journalists, advocates who already know it exists — will occasionally have
+a specific document or article in hand (a court filing, a news story, a
+FOIA response) rather than a raw firsthand account. Right now the tip form
+(§3.8) is framed entirely around "something I witnessed," even though its
+existing `externalUrl` field already supports "here's a link to something I
+found." This costs almost nothing to build because the backend plumbing
+already exists end to end — `POST /api/public/tips` already accepts
+`externalUrl`, already lands in `review_queue` as a `low`-confidence
+candidate, already requires a reviewer to match and approve it.
+- **What's actually new**: UI framing only. A lightweight toggle on
+  `/tips/new` — "I witnessed this" vs. "I found a document about this" —
+  that adjusts placeholder copy and which field is emphasized
+  (`description` vs. `externalUrl`), not a new endpoint or schema.
+- **Why it's worth calling out separately from §3.8 anyway**: this is a
+  *human discovery* channel that scales with the project's own audience
+  growth, at zero marginal engineering cost per new source it turns up — a
+  meaningfully different value proposition than any scraper in this doc,
+  worth actively promoting (e.g. from the About/Methodology page) once the
+  UI framing ships, not just leaving passively available.
+
 ## 4. Rollout order
 
-1. **CourtListener/RECAP** (§3.1) — free API, structured data, highest
-   value-per-effort, lowest LLM dependency.
+1. **"Suggest a source" UI framing** (§3.9) — not really a pipeline at all,
+   just a copy/UI change on a form that's already shipped. Ship this first
+   simply because it's nearly free and doesn't wait on anything else below.
 2. **Schema additions** (§2) — `external_ref`, `ingestion_runs`,
-   `ingestion_configs` — needed before #1 can actually run on a recurring
-   schedule without duplicate-queuing itself.
-3. **State decertification registries**, 1–2 pilot states (§3.2) — improves
-   every later pipeline's match quality via `post_certification_id`.
-4. **Open dataset sync** (§3.3) — cheapest possible next win, almost no new
-   code beyond a fetch+diff loop.
-5. **News monitoring** (§3.4) — the one pipeline worth watching cost on;
+   `ingestion_configs` — needed before any *automated* pipeline below can
+   run on a recurring schedule without duplicate-queuing itself.
+3. **CourtListener/RECAP + Juriscraper** (§3.1) — free, structured, highest
+   value-per-effort, lowest LLM dependency; Juriscraper in particular is the
+   single biggest scope-reduction move in this whole doc (state-court
+   coverage without writing state-court scrapers).
+4. **State + city/county registries**, 1–2 pilots (§3.2) — improves every
+   later pipeline's match quality via `post_certification_id`.
+5. **Open dataset sync** (§3.3) — cheapest possible next win, almost no new
+   code beyond a fetch+diff loop; the Washington Post GitHub repo is likely
+   the single easiest source in this entire document to stand up.
+6. **DocumentCloud** (§3.6) — free, pre-vetted, OCR already done — good
+   value relative to how little novel pipeline logic it needs (mostly reuses
+   the news-monitoring extraction step, §3.4).
+7. **News monitoring** (§3.4) — the one pipeline worth watching cost on;
    ship with the LLM step *off* by default, let it be opted into per
    `ingestion_configs` row once the pre-filter's precision is validated
    against a couple weeks of real (queued-but-not-approved) output.
-6. **MuckRock FOIA filing/tracking** (§3.5).
-7. **Internal-affairs PDF OCR** (§3.6) — deferred until §3.5 produces a real
-   backlog.
+8. **MuckRock FOIA filing/tracking** (§3.5).
+9. **Internal-affairs PDF OCR** (§3.7) — deferred until §3.5/§3.6 leave a
+   real backlog DocumentCloud doesn't already cover.
 
 ## 5. Observability, without spending anything
 
@@ -333,3 +445,18 @@ same way every other source in this doc will.
   fork-triggered PR workflows, which don't get secrets by default) — worth
   confirming this repo's Actions settings match that expectation before the
   news-monitoring pipeline (§3.4) goes anywhere near a real key.
+
+**Explicitly out of scope, and why:**
+- **IADLEST's National Decertification Index** would be the single best
+  possible national aggregation source for exactly what §3.2 is trying to
+  build — but it's restricted to law-enforcement agencies for hiring
+  background checks, not publicly queryable. Naming this plainly rather than
+  pretending it's reachable: it isn't, and no amount of clever scraping
+  changes that, since it's access-controlled, not just hard to find.
+- **Social media monitoring** (X/Twitter, Reddit) was considered and
+  deliberately left out of every pipeline above. X's API isn't meaningfully
+  free anymore, and unverified social posts are exactly the accuracy risk
+  DESIGN.md §6 is built to guard against. Where a viral post is genuinely
+  the first sign of something real, the right path is a human filing it
+  through §3.9's tip form, not an automated pipeline that ingests
+  unverified claims at social-media volume and velocity.
