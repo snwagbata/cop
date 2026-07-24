@@ -176,6 +176,12 @@ Key design choices:
 
 ## 5. Ingestion Pipelines (by source)
 
+Full buildable system design (compute/scheduling choice, per-source pipeline
+design, schema additions, cost breakdown, rollout order) is in
+[`INGESTION_DESIGN.md`](INGESTION_DESIGN.md) — built around a hard low/no-cost
+constraint this project doesn't have a funding model to relax. The table
+below is the original source survey; the doc is the actual plan.
+
 | Source | Automatable? | Method | Notes |
 |---|---|---|---|
 | State decertification registries | Yes, high confidence | Scheduled scraper/API pull | Structured, low-noise, highest value-per-effort. Also the best source for `post_certification_id` (§4, §6) — prioritize registries that publish it. |
