@@ -1,0 +1,84 @@
+name: Ingest — CourtListener/RECAP (federal court dockets)
+
+# INGESTION_DESIGN.md §3.1 (federal CourtListener/RECAP half only -- the
+# state-court Juriscraper half is a deliberate follow-up, not built yet) and
+# §1's cost philosophy: GitHub Actions scheduled workflows are the $0
+# compute layer every ingestion pipeline in that doc runs on. This is
+# scheduled *polling* of CourtListener's search API, not the push-based
+# saved-search-alert design §3.1 calls out as the eventual ideal -- polling
+# is simpler and fully within this task's control to get right; a webhook
+# receiver on apps/api-internal is explicitly out of scope here.
+#
+# Weekly cadence, per §3.1's own volume estimate ("federal §1983 filings per
+# department per week are single digits to low dozens") -- daily would just
+# burn Actions minutes and Anthropic spend for no real recall gain at this
+# volume. workflow_dispatch is included so this can also be run on demand,
+# same convention as .github/workflows/deploy-migrate.yml.
+#
+# Needs three repo secrets that do NOT exist in this repo yet -- see this
+# workflow's `env:` block below for exactly which ones, and the PR/commit
+# description for why INGESTION_DATABASE_URL is a deliberately distinct name
+# from DATABASE_URL rather than reusing it.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays, 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # apps/ingestion depends on @cop/ingestion-lib and @cop/shared-types
+      # by their built `dist/` output (package.json "main"), not by source
+      # -- both must be built before the pipeline script's imports resolve,
+      # same as any other workspace consumer in this monorepo.
+      - name: Build @cop/shared-types
+        run: npm run --workspace packages/shared-types build
+
+      - name: Build @cop/ingestion-lib
+        run: npm run --workspace packages/ingestion-lib build
+
+      - name: Run CourtListener/RECAP ingestion
+        env:
+          # Distinct name from `DATABASE_URL` on purpose: this repo also
+          # deploys services to Render, where `DATABASE_URL`-shaped env vars
+          # are set per-service by Render itself (see render.yaml /
+          # DEPLOYMENT.md) -- reusing the exact literal name `DATABASE_URL`
+          # as a *GitHub repo secret* risks a future maintainer assuming it
+          # means "the Render-managed one" and wiring this workflow at the
+          # wrong database, or vice versa. INGESTION_DATABASE_URL is
+          # unambiguous: it's the connection string this ingestion workflow
+          # uses, full stop. Point it at the same Postgres instance/role
+          # (cop_internal_api) the admin API uses in production.
+          DATABASE_URL: ${{ secrets.INGESTION_DATABASE_URL }}
+          COURTLISTENER_API_KEY: ${{ secrets.COURTLISTENER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: npm run --workspace apps/ingestion ingest:courtlistener
+
+      # Free per-run observability (INGESTION_DESIGN.md §5), independent of
+      # the admin app's ingestion_runs page -- summarizes what this run did
+      # right on the Actions run page, without needing to open the admin app
+      # or query Postgres directly.
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### CourtListener/RECAP ingestion run"
+            echo ""
+            echo "Per-config-row detail (fetched/queued/deduped/errors) is in \`ingestion_runs\`"
+            echo "-- see the admin app's Ingestion Runs page, or query directly:"
+            echo ""
+            echo '```sql'
+            echo "SELECT source_type, started_at, finished_at, items_fetched, items_queued, items_deduped, error"
+            echo "FROM ingestion_runs WHERE source_type = 'courtlistener' ORDER BY started_at DESC LIMIT 10;"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

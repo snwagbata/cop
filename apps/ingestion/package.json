@@ -1,0 +1,29 @@
+{
+  "name": "@cop/ingestion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "INGESTION_DESIGN.md §3.1's first real ingestion pipeline: federal CourtListener/RECAP court-docket monitoring. Fetches candidate §1983 dockets, uses a Claude Haiku pass to extract an officer name from unstructured party text, matches against existing officers, and queues a review_queue candidate -- the same normalize -> dedupe -> [LLM] -> match -> queue shape every pipeline in that doc follows. State-court coverage (Juriscraper) is deliberately out of scope for this workspace; see INGESTION_DESIGN.md §3.1's state-courts section for the planned follow-up.",
+  "main": "./dist/src/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "lint": "tsc --noEmit",
+    "ingest:courtlistener": "tsx src/index.ts courtlistener",
+    "ingest:courtlistener:built": "node dist/src/index.js courtlistener",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.114.0",
+    "@cop/ingestion-lib": "*",
+    "@cop/shared-types": "*",
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.6",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.4",
+    "vitest": "^4.1.10"
+  }
+}
