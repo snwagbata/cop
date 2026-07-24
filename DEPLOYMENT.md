@@ -7,17 +7,21 @@ URL for preview purposes. It does **not** cover real public launch: per
 counsel review first, none of which has happened. Don't put real officer
 data into whatever you deploy from this doc.
 
-**Honesty check on this doc itself**: I have no hosting-platform credentials
-in this environment (verified — no Render/Railway/Fly/Vercel connector is
-configured), so nothing below has been deployed and confirmed working
-end-to-end the way the rest of this repo has been. Every command and env
-var name referenced here was cross-checked against the actual source (grep
-for the exact `process.env.X` reads, the actual `package.json` script
-names, an actual local build/run of both API services with the new
-`PGSSLMODE` flag) — but the deployment platform's own behavior (Blueprint
-provisioning, `fromDatabase`/role handling) is not something I could
-exercise for real. If something in here doesn't match what you see in the
-Render dashboard, that's the gap — tell me and I'll fix it.
+**Honesty check on this doc itself**: this environment still has no
+hosting-platform credentials of its own, but this Blueprint *has* since been
+deployed for real (by the project owner, on their own Render account) and
+checked against the live services over plain HTTP from this environment —
+`cop-api-public`, `cop-api-internal`, and `cop-admin` all confirmed healthy
+and serving real seeded data. That check is also what surfaced §4b's
+CORS/hostname-collision issue (`cop-web` deployed under a suffixed
+hostname, breaking `PUBLIC_WEB_ORIGIN`) — now documented and fixed in
+`render.yaml`, rather than a remaining unknown. What's still unverified from
+this environment specifically: the Dockerfiles' own build process on
+Render's build infrastructure (only the resulting running containers were
+checked, not a build-from-scratch), and static-site build commands running
+on Render's infra rather than locally. If something in here doesn't match
+what you see in the Render dashboard, that's the gap — tell me and I'll fix
+it.
 
 ## Recommended path: Render (free tier)
 
@@ -78,6 +82,38 @@ Using the same `<host>` from step 2:
 Saving these triggers a redeploy of each service. Once both are up, check
 `https://cop-api-public.onrender.com/healthz` returns `{"ok":true}`.
 
+### 4b. Confirm the two static sites' real hostnames, and set CORS origins to match
+
+**Confirmed in a real deploy, not hypothetical:** if `cop-web` or `cop-admin`
+is already taken somewhere else on Render's global namespace, Render
+silently deploys yours under a suffixed hostname instead (e.g.
+`cop-web-2akq.onrender.com`) — there's no warning, no error, the Blueprint
+step just succeeds. Check each static site's actual URL in the Render
+dashboard (or try the plain `https://cop-web.onrender.com` /
+`https://cop-admin.onrender.com` — a `404` with response header
+`x-render-routing: no-server` means it got suffixed and that plain URL
+belongs to no service of yours).
+
+`PUBLIC_WEB_ORIGIN` (on `cop-api-public`) and `CORS_ORIGIN` (on
+`cop-api-internal`) are `sync: false` in `render.yaml` for exactly this
+reason — set each to the *actual* origin (scheme + real hostname) of the
+corresponding static site:
+
+- `cop-api-public` service → Environment → `PUBLIC_WEB_ORIGIN` → the real
+  `cop-web` origin, e.g. `https://cop-web-2akq.onrender.com`
+- `cop-api-internal` service → Environment → `CORS_ORIGIN` → the real
+  `cop-admin` origin
+
+**Why this matters more than a normal misconfigured env var:** the `cors`
+package (`apps/api-public/src/app.ts`, `apps/api-internal/src/app.ts`) does
+an exact string match and echoes back whatever this value is set to as
+`Access-Control-Allow-Origin` regardless of the actual requesting origin. A
+wrong value doesn't fail loudly — `curl`/server-to-server checks (including
+`/healthz`) still return `200` normally, since `curl` doesn't enforce CORS.
+Only a real browser loading the actual site enforces the mismatch, silently
+blocking every API call while the page itself loads fine. If the site loads
+but shows no data anywhere, this is the first thing to check.
+
 ### 5. Set a password for the seed reviewer (needed to log into the admin app)
 
 From your machine, using the `cop_internal_api` connection string from step 4:
@@ -101,9 +137,9 @@ per the note at the bottom of `apps/api-internal/Dockerfile`.)
 Free-tier Render web services spin down after inactivity and take ~30-60s
 to wake on the next request — expected, not a bug, for a demo deployment.
 
-## What I could verify locally vs. what's unverified
+## What's been verified vs. what's still unverified
 
-**Verified** (by actually running it in this environment): the exact
+**Verified locally** (by actually running it in this environment): the exact
 `npm ci` → build `packages/shared-types` → build each app command sequence
 the Dockerfiles and static-site build commands use; that both API services
 still start correctly and pass their full test suites with the new
@@ -112,12 +148,21 @@ local/CI behavior); the exact env var names each service reads
 (`PUBLIC_WEB_ORIGIN`, `CORS_ORIGIN`, `DATABASE_URL`, `PORT`,
 `PGSSLMODE`) via direct source inspection, not memory.
 
-**Not verified** (no Docker daemon, no hosting credentials in this
-environment): that the Dockerfiles actually build successfully end-to-end,
-that Render's Blueprint provisioning behaves exactly as described, that the
-static sites' build commands succeed on Render's build infrastructure
-specifically. These were written carefully but are the part most likely to
-need a follow-up fix once someone with real credentials tries it.
+**Verified against the live deployment** (plain HTTP checks from this
+environment, no Render credentials needed for this part): Blueprint
+provisioning produced working services — `cop-api-public` and
+`cop-api-internal` both return `{"ok":true}` from `/healthz`, real seeded
+data flows through `cop-api-public`'s actual endpoints, `cop-admin` serves
+its real built app and its CORS setup against `cop-api-internal` is
+correct. Also how §4b's `cop-web` hostname-collision bug was actually
+caught, not hypothesized.
+
+**Still not verified** (would need Docker/Render build-infra access this
+environment doesn't have): the Dockerfiles' and static-site build commands'
+behavior *during* a build on Render's infrastructure specifically, as
+opposed to the resulting containers/sites once already running (which have
+been checked). If a from-scratch redeploy ever fails at the build step
+rather than the runtime step, that's the remaining unverified surface.
 
 ## Alternatives briefly considered
 

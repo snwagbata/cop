@@ -32,8 +32,23 @@ services:
         value: "4001"
       - key: PGSSLMODE
         value: require
+      # NOT a hardcoded `value:` on purpose, unlike most other envVars here —
+      # confirmed in production that this needs to be manual: Render suffixes
+      # a static site's hostname (e.g. `cop-web-2akq.onrender.com` instead of
+      # `cop-web.onrender.com`) if the plain name is already taken elsewhere
+      # on Render's global namespace, and there's no blueprint-level way to
+      # reference "whatever hostname cop-web actually got" from here. Since
+      # `cors({ origin: PUBLIC_WEB_ORIGIN })` (apps/api-public/src/app.ts)
+      # does an exact string match and echoes that exact value back as
+      # `Access-Control-Allow-Origin` regardless of the real request origin,
+      # a wrong value here doesn't fail loudly — curl/server-to-server calls
+      # still return 200, only a real browser's CORS enforcement blocks the
+      # actual site. After deploying, check what hostname `cop-web` actually
+      # got (Render dashboard, or just try `https://cop-web.onrender.com` —
+      # a 404 with header `x-render-routing: no-server` means it got
+      # suffixed) and set this to that exact origin, scheme included.
       - key: PUBLIC_WEB_ORIGIN
-        value: https://cop-web.onrender.com
+        sync: false
       # Not `fromDatabase` — cop-db's default connection is the `cop`
       # superuser role. This service needs the read-mostly cop_public_api
       # role instead, which only exists after migrations run (DEPLOYMENT.md
@@ -54,8 +69,13 @@ services:
         value: "4002"
       - key: PGSSLMODE
         value: require
+      # Same name-collision risk as PUBLIC_WEB_ORIGIN above (see that comment)
+      # — `cop-admin` happened to keep its plain name in the one deployment
+      # this was checked against, but that's not guaranteed on a fresh
+      # deploy, so this stays manual rather than hardcoding a value that
+      # might silently be wrong.
       - key: CORS_ORIGIN
-        value: https://cop-admin.onrender.com
+        sync: false
       - key: DATABASE_URL
         sync: false # cop_internal_api role — same manual step as above
 
