@@ -111,10 +111,33 @@ exists; no photo test data yet), and the rest of the DESIGN.md §12 backlog
 (multi-language, saved searches, FOIA tracker, vetted bulk API export,
 anonymous tip intake).
 
-Known follow-up: `npm audit` reports vulnerabilities in the `vite`/`vitest`/
-`esbuild` dev-dependency chain (`GHSA-67mh-4wv8-2f99`, a dev-server-only
-issue). Not fixed here since the available fix is a breaking `vite` major
-version bump that hasn't been tested against this codebase.
+Known follow-ups from `npm audit` (GitHub's Dependabot alert count is higher
+than a local `npm audit` shows because it reports each severity in a
+dependency chain separately — same two underlying issues either way):
+
+- `vite`/`vitest`/`esbuild` dev-dependency chain (`GHSA-67mh-4wv8-2f99`,
+  a dev-server-only issue — doesn't ship to production). Not fixed here
+  since the available fix is a breaking `vite`/`vitest` major version bump
+  that hasn't been tested against this codebase's suites.
+- `react-router`/`react-router-dom` (`GHSA-wrjc-x8rr-h8h6` open redirect,
+  `GHSA-337j-9hxr-rhxg` SSR-hydration constructor injection) — this one
+  **does** ship to production in both frontends, unlike the dev-tooling
+  issue above, and got a real look rather than a blanket defer: `npm audit
+  fix` only bumps to the latest patch within the still-vulnerable 6.x range
+  (confirmed — re-running `npm audit` after showed the same finding); the
+  actual fix needs a major version jump to react-router v7. Checked actual
+  exploitability in this codebase before deciding not to force that
+  migration blind: every dynamic `navigate()`/`<Link to>` target in both
+  apps is either a fixed string, an API-returned UUID, or (the one dynamic
+  case worth checking, `LoginPage.tsx`'s post-login redirect) React
+  Router's own internal `location.state`, which isn't settable via a URL by
+  an outside party — there's no place either app takes a raw URL/user-
+  controlled string and feeds it into a redirect target unsanitized. The
+  second advisory is SSR-specific; both apps are pure client-rendered SPAs
+  with no SSR at all. Real risk here is low for how this codebase actually
+  uses the library, but the major-version fix is still a legitimate
+  follow-up worth doing with proper regression testing, not a permanent
+  pass.
 
 ## A note on parallel-agent verification debris
 
