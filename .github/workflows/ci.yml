@@ -82,6 +82,32 @@ jobs:
           npm run --workspace apps/api-internal build
           npm run --workspace apps/api-internal test
 
+      # packages/ingestion-lib and apps/ingestion default their own test
+      # suites at a dedicated database name (cop_test_ingestion /
+      # cop_test_courtlistener) to avoid local multi-agent contention on the
+      # shared cop_test (db/TESTING.md's "known limitation") -- that
+      # concern doesn't apply in CI, where this job's cop_test is already
+      # isolated per-run and nothing else touches it, so both suites are
+      # pointed at the same already-migrated-and-seeded cop_test here
+      # rather than provisioning two more databases for no benefit.
+      - name: Build + test packages/ingestion-lib
+        env:
+          COP_TEST_SUPERUSER_URL: postgres://cop:cop_dev_only@localhost:5432/cop_test
+          COP_TEST_INTERNAL_API_URL: postgres://cop_internal_api:cop_internal_dev_only@localhost:5432/cop_test
+          COP_TEST_PUBLIC_API_URL: postgres://cop_public_api:cop_public_dev_only@localhost:5432/cop_test
+        run: |
+          npm run --workspace packages/ingestion-lib build
+          npm run --workspace packages/ingestion-lib test
+
+      - name: Build + lint + test apps/ingestion
+        env:
+          INGESTION_TEST_SUPERUSER_URL: postgres://cop:cop_dev_only@localhost:5432/cop_test
+          INGESTION_TEST_INTERNAL_API_URL: postgres://cop_internal_api:cop_internal_dev_only@localhost:5432/cop_test
+        run: |
+          npm run --workspace apps/ingestion build
+          npm run --workspace apps/ingestion lint
+          npm run --workspace apps/ingestion test
+
   # Both frontends are tested against mocked/fixture data, not a real
   # database — no Postgres service needed here, and running it as a
   # separate parallel job (rather than folding into `backend`) keeps the
