@@ -3,8 +3,10 @@ import type {
   CreateOfficerRequest,
   CreateRecordResponse,
   EmploymentStatus,
+  ListPendingPhotosResponse,
   OfficerDetail,
   OfficerSearchCandidate,
+  PendingPhotoOfficer,
   SearchInternalOfficersResponse,
 } from "@cop/shared-types";
 import { STANDARD_OFFICER_PAGE_DISCLAIMER } from "@cop/shared-types";
@@ -209,6 +211,205 @@ officersRouter.post(
 
       const response: CreateRecordResponse<OfficerDetail> = { record, revisionId };
       res.status(201).json(response);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/internal/officers/pending-photos
+//
+// DESIGN.md §7's photo-confirmation gate ("photo_url is never auto-approved
+// -- a reviewer must positively confirm the photo matches the officer").
+// Lists every officer with a photo_url set but not yet confirmed, backing
+// the admin app's photo-review queue. No admin gating -- any authenticated
+// reviewer can act here, same as the rest of this router (only
+// reviewers.ts's reviewer-management routes are admin-only).
+// ---------------------------------------------------------------------------
+officersRouter.get(
+  "/pending-photos",
+  asyncHandler(async (_req, res) => {
+    const result = await pool.query<{
+      id: string;
+      first_name: string;
+      last_name: string;
+      department_name: string;
+      badge_number: string | null;
+      photo_url: string;
+      created_at: string;
+    }>(
+      `SELECT o.id, o.first_name, o.last_name, d.name AS department_name,
+              o.badge_number, o.photo_url, o.created_at
+         FROM officers o
+         JOIN departments d ON d.id = o.department_id
+        WHERE o.photo_url IS NOT NULL AND o.photo_confirmed = false
+        ORDER BY o.created_at ASC`,
+    );
+
+    const officers: PendingPhotoOfficer[] = result.rows.map((row) => ({
+      id: row.id,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      departmentName: row.department_name,
+      badgeNumber: row.badge_number,
+      photoUrl: row.photo_url,
+      createdAt: row.created_at,
+    }));
+
+    const response: ListPendingPhotosResponse = { officers };
+    res.status(200).json(response);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// POST /api/internal/officers/:id/confirm-photo
+// POST /api/internal/officers/:id/reject-photo
+//
+// The other half of DESIGN.md §7's photo-confirmation gate: a reviewer
+// positively confirming (or rejecting) that photo_url actually depicts the
+// officer being published. A rejected photo is removed outright, not left
+// dangling in an unconfirmed state, so it can't accidentally resurface on
+// the pending-photos queue under a stale URL if photo_url is ever set
+// again by some future edit path.
+//
+// Both routes lock the officer row (SELECT ... FOR UPDATE) before checking
+// eligibility, same defensive pattern as reviewQueue.ts's
+// promoteReviewQueueItem, and write the record_revisions row in the same
+// transaction as the officers UPDATE per revisions.ts's contract.
+// ---------------------------------------------------------------------------
+officersRouter.post(
+  "/:id/confirm-photo",
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const reviewer = req.reviewer!;
+    if (!UUID_RE.test(id)) {
+      throw new ApiError(400, "invalid_request", "officer id must be a valid UUID.");
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const existing = await client.query<{ id: string; photo_url: string | null; photo_confirmed: boolean }>(
+        `SELECT id, photo_url, photo_confirmed FROM officers WHERE id = $1 FOR UPDATE`,
+        [id],
+      );
+      const row = existing.rows[0];
+      if (!row) {
+        throw new ApiError(404, "not_found", `No officer with id ${id}.`);
+      }
+      if (!row.photo_url) {
+        throw new ApiError(400, "no_photo", `Officer ${id} has no photo_url to confirm.`);
+      }
+      if (row.photo_confirmed) {
+        throw new ApiError(400, "already_confirmed", `Officer ${id}'s photo is already confirmed.`);
+      }
+
+      const updateResult = await client.query<{
+        id: string;
+        photo_url: string;
+        photo_confirmed: boolean;
+        photo_confirmed_by: string;
+        photo_confirmed_at: string;
+      }>(
+        `UPDATE officers
+            SET photo_confirmed = true, photo_confirmed_by = $1, photo_confirmed_at = now()
+          WHERE id = $2
+          RETURNING id, photo_url, photo_confirmed, photo_confirmed_by, photo_confirmed_at`,
+        [reviewer.id, id],
+      );
+      const updated = updateResult.rows[0];
+
+      await writeRecordRevision(client, {
+        recordType: "officer",
+        recordId: id,
+        changeType: "update",
+        diff: { photoConfirmed: true },
+        changedBy: reviewer.id,
+      });
+
+      await client.query("COMMIT");
+
+      res.status(200).json({
+        officer: {
+          id: updated.id,
+          photoUrl: updated.photo_url,
+          photoConfirmed: updated.photo_confirmed,
+          photoConfirmedBy: updated.photo_confirmed_by,
+          photoConfirmedAt: updated.photo_confirmed_at,
+        },
+      });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }),
+);
+
+officersRouter.post(
+  "/:id/reject-photo",
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const reviewer = req.reviewer!;
+    if (!UUID_RE.test(id)) {
+      throw new ApiError(400, "invalid_request", "officer id must be a valid UUID.");
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const existing = await client.query<{ id: string; photo_url: string | null; photo_confirmed: boolean }>(
+        `SELECT id, photo_url, photo_confirmed FROM officers WHERE id = $1 FOR UPDATE`,
+        [id],
+      );
+      const row = existing.rows[0];
+      if (!row) {
+        throw new ApiError(404, "not_found", `No officer with id ${id}.`);
+      }
+      if (!row.photo_url) {
+        throw new ApiError(400, "no_photo", `Officer ${id} has no photo_url to reject.`);
+      }
+      if (row.photo_confirmed) {
+        throw new ApiError(
+          400,
+          "already_confirmed",
+          `Officer ${id}'s photo is already confirmed -- nothing pending to reject.`,
+        );
+      }
+
+      const updateResult = await client.query<{ id: string; photo_url: string | null; photo_confirmed: boolean }>(
+        `UPDATE officers
+            SET photo_url = NULL, photo_confirmed = false, photo_confirmed_by = NULL, photo_confirmed_at = NULL
+          WHERE id = $1
+          RETURNING id, photo_url, photo_confirmed`,
+        [id],
+      );
+      const updated = updateResult.rows[0];
+
+      await writeRecordRevision(client, {
+        recordType: "officer",
+        recordId: id,
+        changeType: "update",
+        diff: { photoUrl: null, photoRejected: true },
+        changedBy: reviewer.id,
+      });
+
+      await client.query("COMMIT");
+
+      res.status(200).json({
+        officer: {
+          id: updated.id,
+          photoUrl: updated.photo_url,
+          photoConfirmed: updated.photo_confirmed,
+        },
+      });
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

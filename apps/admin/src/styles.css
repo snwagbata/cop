@@ -226,6 +226,22 @@ select:focus {
   font-size: 0.85rem;
 }
 
+/* --- photo review --- */
+
+.photo-review-card .card-header {
+  align-items: flex-start;
+}
+
+.photo-review-img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  flex-shrink: 0;
+}
+
 /* --- officer search picker --- */
 
 .officer-search-picker {

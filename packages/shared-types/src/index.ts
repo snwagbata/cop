@@ -188,6 +188,27 @@ export interface OfficerDetail {
 // ---------------------------------------------------------------------------
 
 /**
+ * One officer with a photo_url awaiting the DESIGN.md §7 confirmation gate
+ * ("photo_url is never auto-approved, even from a tier1 source -- a
+ * reviewer must positively confirm the photo matches the officer"). Backs
+ * GET /api/internal/officers/pending-photos, the queue the admin app's
+ * photo-review page renders.
+ */
+export interface PendingPhotoOfficer {
+  id: string;
+  firstName: string;
+  lastName: string;
+  departmentName: string;
+  badgeNumber: string | null;
+  photoUrl: string;
+  createdAt: string;
+}
+
+export interface ListPendingPhotosResponse {
+  officers: PendingPhotoOfficer[];
+}
+
+/**
  * proposed_record shape for a candidate new officer awaiting review.
  * Matches the seed data's example JSON.
  */
