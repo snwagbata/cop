@@ -118,8 +118,9 @@ affected workspace, plus live browser checks of both flows):
   reviewer to match and approve like any other candidate record.
 
 Still not built: any real ingestion pipeline (decertification registry sync,
-news monitoring, court docket monitoring — DESIGN.md §5, Phase 2+), the
-rest of the DESIGN.md §12 backlog (multi-language, saved searches, FOIA
+news monitoring, court docket monitoring — DESIGN.md §5, Phase 2+; system
+design for these is written up in `INGESTION_DESIGN.md`, not yet
+implemented), the rest of the DESIGN.md §12 backlog (multi-language, saved searches, FOIA
 tracker, vetted bulk API export), and an officer-edit API + admin page —
 today `POST /api/internal/officers` (create) is the only write path for an
 officer, so there's no way to correct/update an existing one after the
