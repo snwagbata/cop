@@ -30,8 +30,7 @@ action — no CLI, no local Docker needed on your end either.
 ### 1. Create the Blueprint
 
 Render dashboard → **New** → **Blueprint** → connect this repo, branch
-`claude/new-session-cjdpsk` (or wherever this lands after merging). Render
-reads `render.yaml` and proposes: a Postgres database (`cop-db`), two
+`main`. Render reads `render.yaml` and proposes: a Postgres database (`cop-db`), two
 Docker-built web services (`cop-api-public`, `cop-api-internal`), and two
 static sites (`cop-web`, `cop-admin`). Approve it. The two API services
 will fail to start after this step — expected, they don't have a working
