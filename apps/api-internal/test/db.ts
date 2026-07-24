@@ -33,6 +33,12 @@ const ALL_TABLES = [
   "sources",
   "departments",
   "reviewers",
+  // Migration 0019 (INGESTION_DESIGN.md §2) -- no FK relationship to
+  // anything else in ALL_TABLES, but still needs resetting between tests
+  // the same as every other table here, so one test file's ingestion-runs
+  // fixtures (see ingestionRuns.test.ts) don't leak into another's.
+  "ingestion_runs",
+  "ingestion_configs",
 ];
 
 /**

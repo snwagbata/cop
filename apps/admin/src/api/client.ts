@@ -25,6 +25,7 @@ import type {
   DisputeStatus,
   GetReviewDigestResponse,
   ListDisputesResponse,
+  ListIngestionRunsResponse,
   ListPendingPhotosResponse,
   ListRecordRevisionsResponse,
   ListReviewersResponse,
@@ -273,6 +274,16 @@ export function updateReviewer(id: string, payload: UpdateReviewerRequest): Prom
     method: "PATCH",
     body: payload,
   });
+}
+
+/**
+ * INGESTION_DESIGN.md §5's read-only observability page over ingestion_runs
+ * (migration 0019), "similar to Audit Log" -- so this follows
+ * fetchRecordRevisions' shape below (no params here, though: the backing
+ * route has no filters, just "the most recent 50 runs").
+ */
+export function fetchIngestionRuns(): Promise<ListIngestionRunsResponse> {
+  return request<ListIngestionRunsResponse>("/api/internal/ingestion-runs");
 }
 
 export function fetchRecordRevisions(params: {
