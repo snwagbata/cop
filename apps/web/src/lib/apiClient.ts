@@ -13,6 +13,8 @@ import type {
   ApiErrorResponse,
   CreatePublicDisputeRequest,
   CreatePublicDisputeResponse,
+  CreatePublicTipRequest,
+  CreatePublicTipResponse,
   DisputeStatusResponse,
   GetDepartmentStatsResponse,
   GetOfficerResponse,
@@ -98,6 +100,21 @@ export function submitDispute(body: CreatePublicDisputeRequest): Promise<CreateP
  */
 export function getDisputeStatus(id: string): Promise<DisputeStatusResponse> {
   return request<DisputeStatusResponse>(`/api/public/disputes/${encodeURIComponent(id)}`);
+}
+
+/**
+ * POST /api/public/tips — anonymous, source-protected tip intake (DESIGN.md
+ * §12). Same request/response pattern as submitDispute above, but the
+ * response is deliberately minimal ({ success: true }, no id) since there's
+ * no follow-up or status-check surface for a tip — see
+ * CreatePublicTipResponse's doc comment in @cop/shared-types.
+ */
+export function submitTip(body: CreatePublicTipRequest): Promise<CreatePublicTipResponse> {
+  return request<CreatePublicTipResponse>("/api/public/tips", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 /**

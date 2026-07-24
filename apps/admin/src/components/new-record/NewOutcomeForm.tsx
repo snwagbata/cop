@@ -137,7 +137,6 @@ export function NewOutcomeForm({ sessionIncidents, sessionSources, onCreated }: 
           <input
             id="out-amount"
             type="number"
-            min="0"
             step="0.01"
             placeholder="e.g. 25000"
             value={amountDollars}

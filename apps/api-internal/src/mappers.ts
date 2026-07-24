@@ -30,7 +30,7 @@ export function mapDepartmentRow(row: DepartmentRow): Department {
 export interface SourceRow {
   id: string;
   source_type: Source["sourceType"];
-  url: string;
+  url: string | null;
   publication_date: string | null;
   retrieved_date: string;
   reliability_tier: Source["reliabilityTier"];

@@ -25,6 +25,7 @@ import type {
   DisputeStatus,
   GetReviewDigestResponse,
   ListDisputesResponse,
+  ListPendingPhotosResponse,
   ListRecordRevisionsResponse,
   ListReviewersResponse,
   ListReviewQueueResponse,
@@ -220,6 +221,42 @@ export function bulkApproveReviewQueueItems(payload: BulkApproveRequest): Promis
   return request<BulkApproveResponse>("/api/internal/review-queue/bulk-approve", {
     method: "POST",
     body: payload,
+  });
+}
+
+/**
+ * DESIGN.md §7 photo-confirmation gate: officers with a photo_url set but
+ * not yet reviewer-confirmed. Backs PhotoReviewPage.
+ */
+export function fetchPendingPhotos(): Promise<ListPendingPhotosResponse> {
+  return request<ListPendingPhotosResponse>("/api/internal/officers/pending-photos");
+}
+
+/**
+ * Response shape isn't pinned down in shared-types beyond "the updated
+ * officer's relevant fields" (task spec) -- modeled locally the same way
+ * apps/admin/src/api/client.ts's manual-entry Created* types are, rather
+ * than growing shared-types for a shape only this page consumes.
+ */
+export interface PhotoConfirmationResult {
+  officer: {
+    id: string;
+    photoUrl: string | null;
+    photoConfirmed: boolean;
+    photoConfirmedBy?: string | null;
+    photoConfirmedAt?: string | null;
+  };
+}
+
+export function confirmOfficerPhoto(id: string): Promise<PhotoConfirmationResult> {
+  return request<PhotoConfirmationResult>(`/api/internal/officers/${encodeURIComponent(id)}/confirm-photo`, {
+    method: "POST",
+  });
+}
+
+export function rejectOfficerPhoto(id: string): Promise<PhotoConfirmationResult> {
+  return request<PhotoConfirmationResult>(`/api/internal/officers/${encodeURIComponent(id)}/reject-photo`, {
+    method: "POST",
   });
 }
 
