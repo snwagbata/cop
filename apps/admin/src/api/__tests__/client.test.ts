@@ -271,6 +271,14 @@ describe("api/client", () => {
       );
     });
 
+    it("fetchIngestionRuns: GET the ingestion-runs list", async () => {
+      await api.fetchIngestionRuns();
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost:4002/api/internal/ingestion-runs",
+        expect.objectContaining({ method: "GET" }),
+      );
+    });
+
     it("createCitation: POST to /api/internal/citations", async () => {
       const payload = { sourceId: "src-1", citableType: "incident" as const, citableId: "inc-1" };
       await api.createCitation(payload);

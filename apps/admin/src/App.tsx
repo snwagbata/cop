@@ -8,6 +8,7 @@ import { ReviewQueuePage } from "./pages/ReviewQueuePage";
 import { DisputesPage } from "./pages/DisputesPage";
 import { NewRecordPage } from "./pages/NewRecordPage";
 import { AuditLogPage } from "./pages/AuditLogPage";
+import { IngestionRunsPage } from "./pages/IngestionRunsPage";
 import { ReviewersPage } from "./pages/ReviewersPage";
 import { PhotoReviewPage } from "./pages/PhotoReviewPage";
 
@@ -81,6 +82,14 @@ function AppRoutes() {
         element={
           <RequireAuth>
             <PhotoReviewPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/ingestion-runs"
+        element={
+          <RequireAuth>
+            <IngestionRunsPage />
           </RequireAuth>
         }
       />

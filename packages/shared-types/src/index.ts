@@ -419,6 +419,33 @@ export interface CreatePublicTipResponse {
  * depend on the public service being reachable. */
 export type SearchInternalOfficersResponse = SearchOfficersResponse;
 
+/**
+ * INGESTION_DESIGN.md §2/§5, migration 0019's `ingestion_runs` table: one
+ * row per automated pipeline run, for the read-only admin-app observability
+ * page ("similar to Audit Log"). No pipeline writes these yet as of this
+ * migration — this type (and the page it backs) ships ahead of the first
+ * real pipeline on purpose, per that doc's rollout order (§4).
+ * `finishedAt: null` alongside a `startedAt` well in the past is itself the
+ * "something's wrong" signal for an unattended, mostly-unmonitored pipeline.
+ */
+export interface IngestionRun {
+  id: string;
+  sourceType: string;
+  startedAt: string;
+  finishedAt: string | null;
+  itemsFetched: number;
+  itemsQueued: number;
+  itemsDeduped: number;
+  error: string | null;
+}
+
+/** GET /api/internal/ingestion-runs — most recent N runs, newest first. No
+ * full pagination like ListRecordRevisionsResponse's PageInfo: this is a
+ * simpler "what's happened lately" list, not a browsable archive. */
+export interface ListIngestionRunsResponse {
+  runs: IngestionRun[];
+}
+
 export interface CreateDepartmentRequest {
   name: string;
   state: string;
