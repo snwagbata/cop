@@ -12,6 +12,53 @@ const INCIDENT_TYPE_OPTIONS: { value: IncidentType; label: string }[] = [
   { value: "other", label: "Other / not sure" },
 ];
 
+// INGESTION_DESIGN.md §3.9 ("Suggest a source" UI framing): this form's
+// backend has always accepted a link alongside a firsthand account
+// (`externalUrl`, `POST /api/public/tips`), but the UI only ever framed
+// itself around "something I witnessed." The toggle below is purely
+// presentational — it swaps copy via this lookup, nothing else. Both modes
+// submit the exact same fields to submitTip(); see handleSubmit.
+type TipMode = "witness" | "document";
+
+const MODE_COPY: Record<
+  TipMode,
+  {
+    toggleLabel: string;
+    subtitle: string;
+    descriptionLabel: string;
+    descriptionPlaceholder: string;
+    externalUrlLabel: string;
+    externalUrlPlaceholder: string;
+    externalUrlHelp?: string;
+  }
+> = {
+  witness: {
+    toggleLabel: "I witnessed this",
+    subtitle:
+      "Use this form to report a potential incident of officer misconduct you know about — for example, body " +
+      "cam or bystander footage, or something you witnessed. This form is completely anonymous: we do not " +
+      "collect your name, contact information, or IP address. Every tip is reviewed by a person before " +
+      "anything is published; nothing here goes live automatically.",
+    descriptionLabel: "What happened?",
+    descriptionPlaceholder: "Describe what you saw or know about, as specifically as you can.",
+    externalUrlLabel: "Link to footage or a document (optional)",
+    externalUrlPlaceholder: "https://…",
+  },
+  document: {
+    toggleLabel: "I found a document about this",
+    subtitle:
+      "Use this form to point us to a specific document about a potential incident of officer misconduct — a " +
+      "court filing, a news article, a FOIA response, or something similar you came across. This form is " +
+      "completely anonymous: we do not collect your name, contact information, or IP address. Every submission " +
+      "is reviewed by a person before anything is published; nothing here goes live automatically.",
+    descriptionLabel: "What does the document show, briefly?",
+    descriptionPlaceholder: "Summarize what the document says or shows, as specifically as you can.",
+    externalUrlLabel: "Link to the court filing, article, or document",
+    externalUrlPlaceholder: "https://…",
+    externalUrlHelp: "This is the most useful thing you can give us — a reviewer will read the document directly.",
+  },
+};
+
 /**
  * Anonymous tip submission form (DESIGN.md §12's "anonymous, source-protected
  * tip intake" backlog item, and §5's footage/tip ingestion row). Unlike
@@ -20,6 +67,7 @@ const INCIDENT_TYPE_OPTIONS: { value: IncidentType; label: string }[] = [
  * than the dispute form for that reason.
  */
 export function TipSubmissionPage() {
+  const [mode, setMode] = useState<TipMode>("witness");
   const [description, setDescription] = useState("");
   const [officerNameAsReported, setOfficerNameAsReported] = useState("");
   const [departmentNameAsReported, setDepartmentNameAsReported] = useState("");
@@ -60,26 +108,43 @@ export function TipSubmissionPage() {
     );
   }
 
+  const copy = MODE_COPY[mode];
+
   return (
     <div>
       <Breadcrumbs items={[{ label: "Home", to: "/" }, { label: "Submit a Tip" }]} />
       <h1 className="page-title">Submit a tip</h1>
-      <p className="subtitle">
-        Use this form to report a potential incident of officer misconduct you know about — for example, body cam
-        or bystander footage, or something you witnessed. This form is completely anonymous: we do not collect
-        your name, contact information, or IP address. Every tip is reviewed by a person before anything is
-        published; nothing here goes live automatically.
-      </p>
+
+      <div className="tip-mode-toggle" role="group" aria-label="What kind of tip is this?">
+        <button
+          type="button"
+          className={`btn ${mode === "witness" ? "btn-primary" : "btn-secondary"}`}
+          aria-pressed={mode === "witness"}
+          onClick={() => setMode("witness")}
+        >
+          {MODE_COPY.witness.toggleLabel}
+        </button>
+        <button
+          type="button"
+          className={`btn ${mode === "document" ? "btn-primary" : "btn-secondary"}`}
+          aria-pressed={mode === "document"}
+          onClick={() => setMode("document")}
+        >
+          {MODE_COPY.document.toggleLabel}
+        </button>
+      </div>
+
+      <p className="subtitle">{copy.subtitle}</p>
 
       <form className="tip-form" onSubmit={handleSubmit}>
         <div className="field">
-          <label htmlFor="description">What happened?</label>
+          <label htmlFor="description">{copy.descriptionLabel}</label>
           <textarea
             id="description"
             required
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Describe what you saw or know about, as specifically as you can."
+            placeholder={copy.descriptionPlaceholder}
           />
         </div>
 
@@ -129,15 +194,16 @@ export function TipSubmissionPage() {
           />
         </div>
 
-        <div className="field">
-          <label htmlFor="externalUrl">Link to footage or a document (optional)</label>
+        <div className={`field${mode === "document" ? " field-emphasized" : ""}`}>
+          <label htmlFor="externalUrl">{copy.externalUrlLabel}</label>
           <input
             id="externalUrl"
             type="url"
             value={externalUrl}
             onChange={(e) => setExternalUrl(e.target.value)}
-            placeholder="https://…"
+            placeholder={copy.externalUrlPlaceholder}
           />
+          {copy.externalUrlHelp && <p className="field-hint">{copy.externalUrlHelp}</p>}
         </div>
 
         {state.status === "error" && (
