@@ -1,0 +1,50 @@
+name: Run DB migrations against a deployed instance
+
+# Manually-triggered only — this runs schema migrations (and, optionally,
+# the synthetic seed data load) against whatever database RENDER_DB_URL
+# points at. Not tied to a push/PR, since running this automatically on
+# every push would mean every merge tries to re-migrate production, which
+# is not what anyone wants. See DEPLOYMENT.md for the full Render setup
+# this is step 3 of.
+#
+# GitHub-hosted runners have normal outbound internet access (unlike the
+# sandboxed dev environment this repo has sometimes been built in, which
+# only allows outbound HTTPS through a proxy and cannot reach an external
+# Postgres host on port 5432 at all) -- that's the whole reason this
+# workflow exists instead of just running db/migrate.sh locally.
+on:
+  workflow_dispatch:
+    inputs:
+      run_seed:
+        description: >-
+          Also run db/seed.sh after migrating. Only ever do this against a
+          brand-new, empty database -- db/seed/0001_synthetic_sample_data.sql
+          uses fixed UUIDs and will fail with a duplicate-key error (safely
+          -- it won't corrupt existing rows) on a second run. Leave this
+          unchecked for any later migration-only run against an
+          already-seeded instance.
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: ${{ secrets.RENDER_DB_URL }}
+        run: ./db/migrate.sh
+
+      - name: Load synthetic seed data
+        if: ${{ inputs.run_seed }}
+        env:
+          DATABASE_URL: ${{ secrets.RENDER_DB_URL }}
+        run: ./db/seed.sh
