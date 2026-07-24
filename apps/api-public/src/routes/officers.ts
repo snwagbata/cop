@@ -49,7 +49,14 @@ officersRouter.get("/search", async (req, res, next) => {
     const result = await pool.query<OfficerSearchRow>(
       `SELECT
          o.id, o.first_name, o.last_name, o.department_id, d.name AS department_name,
-         o.badge_number, o.photo_url, o.hire_date,
+         o.badge_number,
+         -- DESIGN.md §7: photo_url is never auto-approved, even from a
+         -- tier1 source -- an unconfirmed photo must never leave the
+         -- server on any public-facing route. Enforced here in SQL (not
+         -- just the JS mapping layer) so there's no way to forget the gate
+         -- on a future query added to this file.
+         CASE WHEN o.photo_confirmed THEN o.photo_url ELSE NULL END AS photo_url,
+         o.hire_date,
          h.start_date AS history_start, h.end_date AS history_end
        FROM officers o
        JOIN departments d ON d.id = o.department_id
@@ -106,7 +113,14 @@ officersRouter.get("/", async (req, res, next) => {
       pool.query<OfficerSearchRow>(
         `SELECT
            o.id, o.first_name, o.last_name, o.department_id, d.name AS department_name,
-           o.badge_number, o.photo_url, o.hire_date,
+           o.badge_number,
+         -- DESIGN.md §7: photo_url is never auto-approved, even from a
+         -- tier1 source -- an unconfirmed photo must never leave the
+         -- server on any public-facing route. Enforced here in SQL (not
+         -- just the JS mapping layer) so there's no way to forget the gate
+         -- on a future query added to this file.
+         CASE WHEN o.photo_confirmed THEN o.photo_url ELSE NULL END AS photo_url,
+         o.hire_date,
            h.start_date AS history_start, h.end_date AS history_end
          FROM officers o
          JOIN departments d ON d.id = o.department_id
@@ -166,7 +180,11 @@ officersRouter.get("/:id", async (req, res, next) => {
     }>(
       `SELECT
          o.id, o.first_name, o.last_name, o.known_aliases, o.badge_number, o.rank,
-         o.employment_status, o.photo_url,
+         o.employment_status,
+         -- DESIGN.md §7: unconfirmed photos never leave the server, gated
+         -- in SQL rather than the JS mapping layer -- see the same CASE in
+         -- /search and / above.
+         CASE WHEN o.photo_confirmed THEN o.photo_url ELSE NULL END AS photo_url,
          d.id AS dept_id, d.name AS dept_name, d.state AS dept_state,
          d.jurisdiction_type AS dept_jurisdiction_type, d.contact_info AS dept_contact_info,
          d.records_request_portal_url AS dept_records_request_portal_url

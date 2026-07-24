@@ -44,9 +44,16 @@ INSERT INTO officers (id, first_name, last_name, department_id, badge_number, ra
         '00000000-0000-0000-0000-000000000001', '303', 'Officer', '2019-06-01', 'active', 'CA-POST-000222');
 
 -- Officer C: single-department officer, currently active at Shelbyville.
-INSERT INTO officers (id, first_name, last_name, department_id, badge_number, rank, hire_date, employment_status, post_certification_id) VALUES
+-- Also the seed's example of DESIGN.md §7's photo-confirmation gate: a
+-- placeholder photo_url is set but photo_confirmed is left at its default
+-- (false), so the admin app's photo-review queue has something to show,
+-- and this officer's photo must NOT appear on any public API response
+-- until a reviewer confirms it. The URL is an obviously-synthetic
+-- placeholder image, never a real photo of a real person.
+INSERT INTO officers (id, first_name, last_name, department_id, badge_number, rank, hire_date, employment_status, post_certification_id, photo_url) VALUES
     ('00000000-0000-0000-0000-000000000013', 'Maria', 'Nguyen',
-        '00000000-0000-0000-0000-000000000002', '202', 'Sergeant', '2014-02-01', 'active', 'CA-POST-000333');
+        '00000000-0000-0000-0000-000000000002', '202', 'Sergeant', '2014-02-01', 'active', 'CA-POST-000333',
+        'https://placehold.co/200x200?text=Officer+Photo');
 
 -- officer_department_history ------------------------------------------
 INSERT INTO officer_department_history (officer_id, department_id, badge_number, start_date, end_date, separation_reason, source_id) VALUES
