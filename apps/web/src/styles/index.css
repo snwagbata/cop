@@ -40,6 +40,23 @@ main.container {
   margin-top: 0;
 }
 
+/* --- tip submission mode toggle (INGESTION_DESIGN.md §3.9) --- */
+
+.tip-mode-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+
+.field-emphasized {
+  border: 1px solid var(--accent-500);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-left: calc(-1 * var(--space-3));
+  margin-right: calc(-1 * var(--space-3));
+}
+
 /* --- landing / mission statement --- */
 
 .mission {
