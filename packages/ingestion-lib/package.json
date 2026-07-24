@@ -1,0 +1,24 @@
+{
+  "name": "@cop/ingestion-lib",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared plumbing every ingestion pipeline depends on (INGESTION_DESIGN.md §2): CandidateItem normalization, external_ref dedup, DESIGN.md §6 entity matching, review_queue writes, and ingestion_runs logging. Not a pipeline itself -- no source-specific fetch/scrape logic lives here.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cop/shared-types": "*",
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.6",
+    "typescript": "^5.5.4",
+    "vitest": "^4.1.10"
+  }
+}
