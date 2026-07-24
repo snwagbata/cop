@@ -59,7 +59,7 @@ function toReviewQueueItem(row: ReviewQueueRow): ReviewQueueItem {
     ? {
         id: row.src_id,
         sourceType: row.src_source_type as Source["sourceType"],
-        url: row.src_url as string,
+        url: row.src_url,
         publicationDate: row.src_publication_date,
         retrievedDate: row.src_retrieved_date as string,
         reliabilityTier: row.src_reliability_tier as Source["reliabilityTier"],

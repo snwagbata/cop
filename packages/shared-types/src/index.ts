@@ -44,7 +44,8 @@ export type SourceType =
   | "news_article"
   | "public_records_response"
   | "official_dataset"
-  | "decertification_registry";
+  | "decertification_registry"
+  | "tip_submission";
 
 export type ReliabilityTier =
   | "tier1_primary_legal_doc"
@@ -92,7 +93,10 @@ export interface OfficerDepartmentHistoryEntry {
 export interface Source {
   id: string;
   sourceType: SourceType;
-  url: string;
+  /** Nullable as of migration 0018: a text-only anonymous tip (DESIGN.md §12)
+   * may have no footage/document link to cite, only a written account. Every
+   * other source_type is still expected to carry a real url by convention. */
+  url: string | null;
   publicationDate: string | null;
   retrievedDate: string;
   reliabilityTier: ReliabilityTier;
@@ -211,6 +215,10 @@ export interface IncidentCandidateProposal {
   shortDescription: string;
   date?: string;
   note?: string;
+  /** Link to footage/document, if the submitter (e.g. an anonymous tipster,
+   * DESIGN.md §12) has one. Optional and backward compatible — existing
+   * rows without it are unaffected. */
+  externalUrl?: string;
 }
 
 export type ReviewQueueProposal = OfficerCandidateProposal | IncidentCandidateProposal;
@@ -350,6 +358,34 @@ export interface DisputeStatusResponse {
   status: DisputeStatus;
   submittedAt: string;
   resolvedAt: string | null;
+}
+
+/**
+ * POST /api/public/tips — DESIGN.md §12's anonymous, source-protected tip
+ * intake backlog item. Deliberately collects no identifying information at
+ * all (contrast with CreatePublicDisputeRequest's requesterName/role, which
+ * exist because a dispute is a back-and-forth tied to a specific existing
+ * record; a tip is a one-way anonymous report of a new potential incident).
+ * Feeds the existing IncidentCandidateProposal review-queue pipeline rather
+ * than a bespoke tip record type.
+ */
+export interface CreatePublicTipRequest {
+  description: string;
+  officerNameAsReported?: string;
+  departmentNameAsReported?: string;
+  incidentType?: IncidentType; // defaults to "other" if not provided
+  incidentDateAsReported?: string; // free text, not validated as a real date
+  externalUrl?: string;
+}
+
+/**
+ * Intentionally minimal — no id, no way to look anything up afterward. This
+ * is the point, not an oversight: DESIGN.md §12 calls for true one-way
+ * anonymous submission, so there is no status-check surface for tips the
+ * way DisputeStatusResponse provides for disputes.
+ */
+export interface CreatePublicTipResponse {
+  success: true;
 }
 
 // ---------------------------------------------------------------------------

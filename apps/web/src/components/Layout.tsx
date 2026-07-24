@@ -15,6 +15,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <Link to="/">Search</Link>
           <Link to="/departments">Departments</Link>
           <Link to="/about">About &amp; Methodology</Link>
+          <Link to="/tips/new">Submit a Tip</Link>
           <Link to="/disputes/new">Correction Request</Link>
           <Link to="/disputes/status">Check Dispute Status</Link>
         </nav>

@@ -4,6 +4,7 @@ import type { NextFunction, Request, Response } from "express";
 import { officersRouter } from "./routes/officers.js";
 import { departmentsRouter } from "./routes/departments.js";
 import { disputesRouter } from "./routes/disputes.js";
+import { tipsRouter } from "./routes/tips.js";
 import { ApiError, sendError } from "./lib/errors.js";
 
 const ALLOWED_ORIGIN = process.env.PUBLIC_WEB_ORIGIN ?? "http://localhost:5173";
@@ -25,6 +26,7 @@ app.get("/healthz", (_req, res) => {
 app.use("/api/public/officers", officersRouter);
 app.use("/api/public/departments", departmentsRouter);
 app.use("/api/public/disputes", disputesRouter);
+app.use("/api/public/tips", tipsRouter);
 
 // 404 for anything unmatched under /api/public
 app.use("/api/public", (_req, res) => {

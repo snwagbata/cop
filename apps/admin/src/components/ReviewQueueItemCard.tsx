@@ -125,9 +125,13 @@ export function ReviewQueueItemCard({
         {source ? (
           <>
             Source:{" "}
-            <a href={source.url} target="_blank" rel="noreferrer">
-              {source.url}
-            </a>{" "}
+            {source.url ? (
+              <a href={source.url} target="_blank" rel="noreferrer">
+                {source.url}
+              </a>
+            ) : (
+              <em>no link (text-only submission)</em>
+            )}{" "}
             <span className={`badge ${TIER_BADGE_CLASS[source.reliabilityTier] ?? "badge-neutral"}`}>
               {TIER_LABEL[source.reliabilityTier] ?? source.reliabilityTier}
             </span>
@@ -244,6 +248,16 @@ function renderDetails(rec: ReviewQueueItem["proposedRecord"]) {
       <dd>{rec.officerId ? `matched (${rec.officerId})` : rec.officerName ? `${rec.officerName} (unmatched)` : "unmatched"}</dd>
       <dt>Description</dt>
       <dd>{rec.shortDescription ?? "— (missing from source record)"}</dd>
+      {rec.externalUrl && (
+        <>
+          <dt>Linked footage/document</dt>
+          <dd>
+            <a href={rec.externalUrl} target="_blank" rel="noreferrer">
+              {rec.externalUrl}
+            </a>
+          </dd>
+        </>
+      )}
       {rec.note && (
         <>
           <dt>Note</dt>
