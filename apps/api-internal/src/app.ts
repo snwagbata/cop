@@ -12,6 +12,7 @@ import { outcomesRouter } from "./routes/outcomes.js";
 import { citationsRouter } from "./routes/citations.js";
 import { reviewersRouter } from "./routes/reviewers.js";
 import { recordRevisionsRouter } from "./routes/recordRevisions.js";
+import { ingestionRunsRouter } from "./routes/ingestionRuns.js";
 import { requireAuth } from "./auth.js";
 import { sendError, ApiError } from "./errors.js";
 
@@ -53,6 +54,11 @@ export function createApp() {
   app.use("/api/internal/reviewers", requireAuth, reviewersRouter);
 
   app.use("/api/internal/record-revisions", requireAuth, recordRevisionsRouter);
+
+  // INGESTION_DESIGN.md §5: read-only observability over ingestion_runs
+  // (migration 0019), same auth level as record-revisions -- any
+  // authenticated reviewer, no admin-only gate.
+  app.use("/api/internal/ingestion-runs", requireAuth, ingestionRunsRouter);
 
   app.use((req, res) => {
     sendError(res, 404, "not_found", `No route for ${req.method} ${req.path}`);
