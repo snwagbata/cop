@@ -1,0 +1,78 @@
+# Render Blueprint for COP — deploys a demo instance running entirely on
+# the synthetic seed data (see db/seed/0001_synthetic_sample_data.sql).
+#
+# NOT verified end-to-end against a live Render account — this environment
+# has no hosting credentials, so this was written from careful reading of
+# every relevant piece of this repo (build scripts, exact package.json
+# script names, exact env vars each service reads — see DEPLOYMENT.md for
+# how those were confirmed) rather than tested by actually deploying it.
+# Read DEPLOYMENT.md before using this; it also covers the one part that
+# genuinely can't be expressed in this file (the cop_public_api/
+# cop_internal_api role-specific DATABASE_URLs, set manually after the
+# first deploy).
+#
+# Usage: Render dashboard -> New -> Blueprint -> point at this repo/branch.
+
+databases:
+  - name: cop-db
+    plan: free
+    databaseName: cop
+    user: cop
+
+services:
+  - type: web
+    name: cop-api-public
+    env: docker
+    dockerfilePath: ./apps/api-public/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: "4001"
+      - key: PGSSLMODE
+        value: require
+      - key: PUBLIC_WEB_ORIGIN
+        value: https://cop-web.onrender.com
+      # Not `fromDatabase` — cop-db's default connection is the `cop`
+      # superuser role. This service needs the read-mostly cop_public_api
+      # role instead, which only exists after migrations run (DEPLOYMENT.md
+      # step 3). Fill this in manually in the Render dashboard once you have
+      # it; `sync: false` just means "not tracked in this file."
+      - key: DATABASE_URL
+        sync: false
+
+  - type: web
+    name: cop-api-internal
+    env: docker
+    dockerfilePath: ./apps/api-internal/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: "4002"
+      - key: PGSSLMODE
+        value: require
+      - key: CORS_ORIGIN
+        value: https://cop-admin.onrender.com
+      - key: DATABASE_URL
+        sync: false # cop_internal_api role — same manual step as above
+
+  - type: web
+    name: cop-web
+    env: static
+    buildCommand: npm ci && npm run --workspace packages/shared-types build && npm run --workspace apps/web build
+    staticPublishPath: apps/web/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://cop-api-public.onrender.com
+
+  - type: web
+    name: cop-admin
+    env: static
+    buildCommand: npm ci && npm run --workspace packages/shared-types build && npm run --workspace apps/admin build
+    staticPublishPath: apps/admin/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://cop-api-internal.onrender.com
