@@ -140,6 +140,8 @@ page reading from Postgres, same as everything else in the admin app).
 
 ### 3.1 Court dockets — CourtListener/RECAP (federal) + Juriscraper (state) — build first
 
+**Status: federal half built** (`apps/ingestion/src/courtlistener/`, scheduled weekly + `workflow_dispatch` via `.github/workflows/ingest-courtlistener.yml`). State-court coverage via Juriscraper is still a follow-up — deliberately out of scope for the first pipeline since it requires shelling out to a Python library, a bigger lift than the rest of this section. Two things about the federal pipeline need a live check before it's trusted with a real API key/budget, since this project's dev environment has no network path to `courtlistener.com` at all (confirmed: blocked at the network-policy layer, not by CourtListener) and so nothing in it could be verified against the real API: the exact CourtListener request/response shape (isolated in `client.ts`, prominently flagged there, fixing it should be a contained change to that one file) and the Claude Haiku extraction prompt (`extract.ts` — thoroughly unit-tested against mocked responses, but never smoke-tested against the real Anthropic API in this environment either). Also needs three new secrets that don't exist yet — see the workflow file's own comments.
+
 **Why first:** DESIGN.md's own table already calls this "structured,
 low-noise, highest value-per-effort," and it's the cleanest fit for a
 zero-cost pipeline — CourtListener's REST API is free, well-documented, has

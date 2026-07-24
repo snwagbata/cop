@@ -117,11 +117,23 @@ affected workspace, plus live browser checks of both flows):
   `tier4_submitted_unverified`, `low`-confidence `incident_candidate` for a
   reviewer to match and approve like any other candidate record.
 
-Still not built: any real ingestion pipeline (decertification registry sync,
-news monitoring, court docket monitoring — DESIGN.md §5, Phase 2+; system
-design for these is written up in `INGESTION_DESIGN.md`, not yet
-implemented), the rest of the DESIGN.md §12 backlog (multi-language, saved searches, FOIA
-tracker, vetted bulk API export), and an officer-edit API + admin page —
+**Ingestion pipelines (DESIGN.md §5, full system design in `INGESTION_DESIGN.md`)**:
+the federal half of the CourtListener/RECAP court-docket pipeline is built
+(`apps/ingestion`, weekly + on-demand via GitHub Actions) — fetches
+candidate §1983 filings, uses a Claude Haiku pass to extract an officer name
+from unstructured docket party text, matches against existing officers, and
+queues a `review_queue` candidate like any other source. Two parts of it
+need a live check before real use (documented prominently in the code and
+in `INGESTION_DESIGN.md` §3.1): the CourtListener request/response shape
+was never verified against their real API (no network path to
+`courtlistener.com` from this project's dev environment), and the
+extraction prompt was never smoke-tested against a real Anthropic API call
+for the same reason.
+
+Still not built: state-court coverage (Juriscraper) for the same pipeline,
+decertification registry sync, news monitoring, the rest of the DESIGN.md
+§12 backlog (multi-language, saved searches, FOIA tracker, vetted bulk API
+export), and an officer-edit API + admin page —
 today `POST /api/internal/officers` (create) is the only write path for an
 officer, so there's no way to correct/update an existing one after the
 fact. When this gets built, it must reset `photo_confirmed` (and
