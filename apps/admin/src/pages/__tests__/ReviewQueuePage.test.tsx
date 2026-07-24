@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { ReviewQueuePage } from "../ReviewQueuePage";
 import { reviewQueueFixtures } from "../../fixtures/reviewQueue";
 import * as api from "../../api/client";
@@ -24,7 +25,11 @@ describe("ReviewQueuePage", () => {
   });
 
   it("loads and renders all pending items from the fixture data", async () => {
-    render(<ReviewQueuePage />);
+    render(
+      <MemoryRouter>
+        <ReviewQueuePage />
+      </MemoryRouter>,
+    );
     await waitFor(() => expect(api.fetchReviewQueue).toHaveBeenCalledWith("pending"));
     for (const item of reviewQueueFixtures) {
       const testId = `review-item-${item.id}`;
@@ -34,7 +39,11 @@ describe("ReviewQueuePage", () => {
 
   it("removes an item from the list after a successful approve", async () => {
     const user = userEvent.setup();
-    render(<ReviewQueuePage />);
+    render(
+      <MemoryRouter>
+        <ReviewQueuePage />
+      </MemoryRouter>,
+    );
     await screen.findByTestId("review-item-rq-1");
 
     const card = screen.getByTestId("review-item-rq-1");
@@ -47,13 +56,21 @@ describe("ReviewQueuePage", () => {
 
   it("shows an empty state when there are no pending items", async () => {
     vi.mocked(api.fetchReviewQueue).mockResolvedValueOnce({ items: [] });
-    render(<ReviewQueuePage />);
+    render(
+      <MemoryRouter>
+        <ReviewQueuePage />
+      </MemoryRouter>,
+    );
     expect(await screen.findByText(/Nothing pending/)).toBeInTheDocument();
   });
 
   it("shows a top-level error banner when the initial fetch fails", async () => {
     vi.mocked(api.fetchReviewQueue).mockRejectedValueOnce(new Error("Could not reach the internal API"));
-    render(<ReviewQueuePage />);
+    render(
+      <MemoryRouter>
+        <ReviewQueuePage />
+      </MemoryRouter>,
+    );
     expect(await screen.findByRole("alert")).toHaveTextContent(/Could not reach the internal API/);
   });
 
@@ -63,7 +80,11 @@ describe("ReviewQueuePage", () => {
       approved: ["rq-1"],
       failed: [{ id: "rq-4", error: "tier4 sources require individual review" }],
     });
-    render(<ReviewQueuePage />);
+    render(
+      <MemoryRouter>
+        <ReviewQueuePage />
+      </MemoryRouter>,
+    );
     await screen.findByTestId("review-item-rq-1");
 
     const card1 = screen.getByTestId("review-item-rq-1");
@@ -84,7 +105,11 @@ describe("ReviewQueuePage", () => {
 
   it("select-all toggles every visible item's checkbox", async () => {
     const user = userEvent.setup();
-    render(<ReviewQueuePage />);
+    render(
+      <MemoryRouter>
+        <ReviewQueuePage />
+      </MemoryRouter>,
+    );
     await screen.findByTestId("review-item-rq-1");
 
     await user.click(screen.getByLabelText(/Select all/));

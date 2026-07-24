@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { AuditLogPage } from "../AuditLogPage";
 import { revisionFixtures } from "../../fixtures/revisions";
 import * as api from "../../api/client";
@@ -22,7 +23,11 @@ describe("AuditLogPage", () => {
   });
 
   it("loads and lists revisions with record type, change type, who, and when", async () => {
-    render(<AuditLogPage />);
+    render(
+      <MemoryRouter>
+        <AuditLogPage />
+      </MemoryRouter>,
+    );
     await waitFor(() => expect(api.fetchRecordRevisions).toHaveBeenCalled());
 
     expect(await screen.findByText("off-204")).toBeInTheDocument();
@@ -32,7 +37,11 @@ describe("AuditLogPage", () => {
 
   it("expands a diff view on demand", async () => {
     const user = userEvent.setup();
-    render(<AuditLogPage />);
+    render(
+      <MemoryRouter>
+        <AuditLogPage />
+      </MemoryRouter>,
+    );
     await screen.findByText("off-204");
 
     expect(screen.queryByText(/"firstName": "Jordan"/)).not.toBeInTheDocument();
@@ -42,7 +51,11 @@ describe("AuditLogPage", () => {
 
   it("re-fetches with the recordType filter when changed", async () => {
     const user = userEvent.setup();
-    render(<AuditLogPage />);
+    render(
+      <MemoryRouter>
+        <AuditLogPage />
+      </MemoryRouter>,
+    );
     await screen.findByText("off-204");
 
     await user.selectOptions(screen.getByLabelText("Filter by record type"), "incident");

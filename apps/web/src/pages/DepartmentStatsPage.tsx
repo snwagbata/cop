@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import type { Department, DepartmentStats } from "@cop/shared-types";
 import { ApiError, getDepartmentStats } from "../lib/apiClient";
 import { formatCentsAsCurrency, formatDate } from "../lib/format";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type LoadState =
   | { status: "loading" }
@@ -59,6 +60,9 @@ export function DepartmentStatsPage() {
 
   return (
     <div>
+      <Breadcrumbs
+        items={[{ label: "Home", to: "/" }, { label: "Departments", to: "/departments" }, { label: department.name }]}
+      />
       <h1 className="page-title">{department.name}</h1>
       <p className="subtitle">
         {department.state} · {department.jurisdictionType}

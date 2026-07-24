@@ -194,6 +194,39 @@ a:hover { text-decoration: underline; }
   color: var(--text);
 }
 
+.breadcrumbs {
+  margin-bottom: var(--space-4);
+}
+.breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.8125rem;
+}
+.breadcrumbs li {
+  display: flex;
+  align-items: center;
+}
+.breadcrumbs li:not(:last-child)::after {
+  content: "/";
+  color: var(--text-muted);
+  margin: 0 var(--space-2);
+}
+.breadcrumbs a {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.breadcrumbs a:hover {
+  color: var(--accent-600);
+}
+.breadcrumbs [aria-current="page"] {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .callout {
   border: 1px solid var(--status-neutral-border);
   background: var(--status-neutral-bg);

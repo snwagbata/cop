@@ -6,6 +6,7 @@ import { DisclaimerBlock } from "../components/DisclaimerBlock";
 import { PhotoOrPlaceholder } from "../components/PhotoOrPlaceholder";
 import { IncidentCard } from "../components/IncidentCard";
 import { ResolvedDisputeNote } from "../components/ResolvedDisputeNote";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { findResolvedDisputes } from "../lib/resolvedDisputes";
 import { formatDateRange, label } from "../lib/format";
 
@@ -69,6 +70,14 @@ export function OfficerDetailPage() {
 
   return (
     <div>
+      <Breadcrumbs
+        items={[
+          { label: "Home", to: "/" },
+          { label: "Departments", to: "/departments" },
+          { label: officer.department.name, to: `/departments/${encodeURIComponent(officer.department.id)}` },
+          { label: `${officer.firstName} ${officer.lastName}` },
+        ]}
+      />
       <div className="officer-header">
         <PhotoOrPlaceholder
           photoUrl={officer.photoUrl}

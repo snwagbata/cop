@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import type { ListOfficersResponse } from "@cop/shared-types";
 import { ApiError, listOfficers } from "../lib/apiClient";
 import { PhotoOrPlaceholder } from "../components/PhotoOrPlaceholder";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type LoadState =
   | { status: "loading" }
@@ -45,8 +46,23 @@ export function OfficersBrowsePage() {
     };
   }, [departmentId, page]);
 
+  // No separate department fetch on this page — reuse the name already
+  // present on each returned officer rather than adding a second request
+  // just for a breadcrumb label. Falls back to a generic label for the
+  // (rare) case of a department with zero officers on file.
+  const departmentName =
+    state.status === "ready" && state.data.officers.length > 0 ? state.data.officers[0].departmentName : "Department";
+
   return (
     <div>
+      <Breadcrumbs
+        items={[
+          { label: "Home", to: "/" },
+          { label: "Departments", to: "/departments" },
+          { label: departmentName, to: `/departments/${encodeURIComponent(departmentId)}` },
+          { label: "Officers" },
+        ]}
+      />
       <h1 className="page-title">Browse officers</h1>
       <p className="subtitle">
         <Link to={`/departments/${encodeURIComponent(departmentId)}`}>Back to department record</Link>

@@ -4,6 +4,7 @@ import type { Reviewer } from "@cop/shared-types";
 import * as api from "../api/client";
 import { ApiError } from "../api/client";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 const emptyForm = { name: "", email: "", role: "reviewer" as "admin" | "reviewer", password: "" };
 
@@ -106,6 +107,7 @@ export function ReviewersPage() {
 
   return (
     <>
+      <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "Reviewers" }]} />
       <h1>Reviewers</h1>
       <p className="page-subtitle">Admin-only: add reviewer accounts, change roles, deactivate access.</p>
 

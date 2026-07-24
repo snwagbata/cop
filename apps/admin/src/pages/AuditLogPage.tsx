@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { PageInfo, RecordRevision } from "@cop/shared-types";
 import * as api from "../api/client";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 const RECORD_TYPES = ["officer", "incident", "outcome", "source"] as const;
 const PAGE_SIZE = 25;
@@ -83,6 +84,7 @@ export function AuditLogPage() {
 
   return (
     <>
+      <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "Audit Log" }]} />
       <h1>Audit log</h1>
       <p className="page-subtitle">
         Every create, update, approve, reject, and dispute resolution writes a record here (DESIGN.md §3, §7).

@@ -4,6 +4,7 @@ import * as api from "../api/client";
 import { ApiError } from "../api/client";
 import { DisputeCard } from "../components/DisputeCard";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 export function DisputesPage() {
   const [disputes, setDisputes] = useState<Dispute[] | null>(null);
@@ -39,6 +40,7 @@ export function DisputesPage() {
 
   return (
     <>
+      <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "Disputes" }]} />
       <h1>Disputes</h1>
       <p className="page-subtitle">Open correction/dispute requests from officers, departments, attorneys, or subjects.</p>
 

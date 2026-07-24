@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { NewRecordPage } from "../NewRecordPage";
 import * as api from "../../api/client";
 
@@ -25,7 +26,11 @@ describe("NewRecordPage", () => {
 
   it("renders the Source form by default, and switches the active step's form on tab click", async () => {
     const user = userEvent.setup();
-    render(<NewRecordPage />);
+    render(
+      <MemoryRouter>
+        <NewRecordPage />
+      </MemoryRouter>,
+    );
 
     expect(screen.getByRole("heading", { name: "New source" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "1. Source" })).toHaveAttribute("aria-selected", "true");
@@ -50,7 +55,11 @@ describe("NewRecordPage", () => {
     vi.mocked(api.createDepartment).mockResolvedValue({
       record: { id: "dept-99", name: "Test PD", state: "CA", jurisdictionType: "municipal" },
     });
-    const { container } = render(<NewRecordPage />);
+    const { container } = render(
+      <MemoryRouter>
+        <NewRecordPage />
+      </MemoryRouter>,
+    );
 
     await user.click(screen.getByRole("tab", { name: "2. Department" }));
     await user.type(screen.getByLabelText("Name"), "Test PD");
@@ -72,7 +81,11 @@ describe("NewRecordPage", () => {
     vi.mocked(api.createSource).mockResolvedValue({
       record: { id: "src-1", sourceType: "news_article", url: "https://example.org/a", reliabilityTier: "tier3_established_news" },
     });
-    const { container } = render(<NewRecordPage />);
+    const { container } = render(
+      <MemoryRouter>
+        <NewRecordPage />
+      </MemoryRouter>,
+    );
 
     expect(container.querySelector(".session-summary")).toBeNull();
 

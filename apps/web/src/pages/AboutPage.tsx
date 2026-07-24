@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 /**
  * About / Methodology page (DESIGN.md §12 backlog: "Public methodology/
@@ -10,6 +11,7 @@ import { Link } from "react-router-dom";
 export function AboutPage() {
   return (
     <div>
+      <Breadcrumbs items={[{ label: "Home", to: "/" }, { label: "About & Methodology" }]} />
       <h1 className="page-title">About &amp; Methodology</h1>
       <p className="subtitle">
         What this database is, how a record gets published, and what to do if you think one is wrong.

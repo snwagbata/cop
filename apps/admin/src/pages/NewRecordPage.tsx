@@ -11,6 +11,7 @@ import { NewDepartmentForm } from "../components/new-record/NewDepartmentForm";
 import { NewOfficerForm } from "../components/new-record/NewOfficerForm";
 import { NewIncidentForm } from "../components/new-record/NewIncidentForm";
 import { NewOutcomeForm } from "../components/new-record/NewOutcomeForm";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 const TABS = [
   { id: "source", label: "1. Source" },
@@ -40,6 +41,7 @@ export function NewRecordPage() {
 
   return (
     <>
+      <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "New Record" }]} />
       <h1>Log a new record</h1>
       <p className="page-subtitle">
         Reviewer-authored manual entry, for records that didn't come through an ingestion pipeline. Every write here

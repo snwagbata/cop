@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { ReviewersPage } from "../ReviewersPage";
 import { reviewerFixtures } from "../../fixtures/reviewers";
 import * as api from "../../api/client";
@@ -21,7 +22,11 @@ describe("ReviewersPage", () => {
   });
 
   it("loads and lists all reviewers with their role and active status", async () => {
-    render(<ReviewersPage />);
+    render(
+      <MemoryRouter>
+        <ReviewersPage />
+      </MemoryRouter>,
+    );
     await waitFor(() => expect(api.fetchReviewers).toHaveBeenCalled());
 
     expect(await screen.findByText("Admin Reviewer")).toBeInTheDocument();
@@ -38,7 +43,11 @@ describe("ReviewersPage", () => {
       role: "reviewer",
       active: true,
     });
-    render(<ReviewersPage />);
+    render(
+      <MemoryRouter>
+        <ReviewersPage />
+      </MemoryRouter>,
+    );
     await screen.findByText("Admin Reviewer");
 
     await user.click(screen.getByRole("button", { name: "Add reviewer" }));
@@ -63,7 +72,11 @@ describe("ReviewersPage", () => {
   it("toggles a reviewer's active status", async () => {
     const user = userEvent.setup();
     vi.mocked(api.updateReviewer).mockResolvedValue({ ...reviewerFixtures[1], active: false });
-    render(<ReviewersPage />);
+    render(
+      <MemoryRouter>
+        <ReviewersPage />
+      </MemoryRouter>,
+    );
     await screen.findByText("Sam Reviewer");
 
     const row = screen.getByText("Sam Reviewer").closest("tr")!;

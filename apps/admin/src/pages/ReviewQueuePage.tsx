@@ -4,6 +4,7 @@ import * as api from "../api/client";
 import { ApiError } from "../api/client";
 import { ReviewQueueItemCard } from "../components/ReviewQueueItemCard";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 export function ReviewQueuePage() {
   const [items, setItems] = useState<ReviewQueueItem[] | null>(null);
@@ -111,6 +112,7 @@ export function ReviewQueuePage() {
 
   return (
     <>
+      <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "Review Queue" }]} />
       <h1>Review queue</h1>
       <p className="page-subtitle">Pending candidate officer and incident records awaiting review.</p>
 

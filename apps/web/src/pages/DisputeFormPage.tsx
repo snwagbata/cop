@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { DisputeRequesterRole } from "@cop/shared-types";
 import { ApiError, submitDispute } from "../lib/apiClient";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type SubmitState =
   | { status: "idle" | "submitting" | "error"; message?: string }
@@ -70,6 +71,7 @@ export function DisputeFormPage() {
   if (state.status === "done") {
     return (
       <div className="success-state">
+        <Breadcrumbs items={[{ label: "Home", to: "/" }, { label: "Correction Request" }]} />
         <p>
           Your correction request has been submitted. We aim to acknowledge every request within 5 business days.
           Resolution notes will be reflected on the relevant record once reviewed.
@@ -87,6 +89,7 @@ export function DisputeFormPage() {
 
   return (
     <div>
+      <Breadcrumbs items={[{ label: "Home", to: "/" }, { label: "Correction Request" }]} />
       <h1 className="page-title">Correction / dispute request</h1>
       <p className="subtitle">
         Use this form to dispute an officer record, incident, or outcome you believe is inaccurate. Every

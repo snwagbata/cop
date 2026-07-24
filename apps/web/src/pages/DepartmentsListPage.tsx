@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Department } from "@cop/shared-types";
 import { ApiError, listDepartments } from "../lib/apiClient";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type LoadState =
   | { status: "loading" }
@@ -29,6 +30,7 @@ export function DepartmentsListPage() {
 
   return (
     <div>
+      <Breadcrumbs items={[{ label: "Home", to: "/" }, { label: "Departments" }]} />
       <h1 className="page-title">Departments</h1>
       <p className="subtitle">
         Browse a department's aggregate accountability record — total settlement payouts, sustained-complaint

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { DisputesPage } from "../DisputesPage";
 import { disputeFixtures } from "../../fixtures/disputes";
 import * as api from "../../api/client";
@@ -21,7 +22,11 @@ describe("DisputesPage", () => {
   });
 
   it("loads and renders all open disputes from the fixture data", async () => {
-    render(<DisputesPage />);
+    render(
+      <MemoryRouter>
+        <DisputesPage />
+      </MemoryRouter>,
+    );
     await waitFor(() => expect(api.fetchDisputes).toHaveBeenCalledWith("open"));
     for (const dispute of disputeFixtures) {
       expect(await screen.findByTestId(`dispute-${dispute.id}`)).toBeInTheDocument();
@@ -30,7 +35,11 @@ describe("DisputesPage", () => {
 
   it("resolves a dispute and removes it from the open list", async () => {
     const user = userEvent.setup();
-    render(<DisputesPage />);
+    render(
+      <MemoryRouter>
+        <DisputesPage />
+      </MemoryRouter>,
+    );
     const card = await screen.findByTestId("dispute-dp-2");
 
     await user.click(within(card).getByRole("button", { name: "Resolve" }));
@@ -47,7 +56,11 @@ describe("DisputesPage", () => {
 
   it("shows an empty state when there are no open disputes", async () => {
     vi.mocked(api.fetchDisputes).mockResolvedValueOnce({ disputes: [] });
-    render(<DisputesPage />);
+    render(
+      <MemoryRouter>
+        <DisputesPage />
+      </MemoryRouter>,
+    );
     expect(await screen.findByText(/No open disputes/)).toBeInTheDocument();
   });
 });

@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import type { DisputeStatusResponse } from "@cop/shared-types";
 import { ApiError, getDisputeStatus } from "../lib/apiClient";
 import { formatDate, label } from "../lib/format";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type LookupState =
   | { status: "idle" }
@@ -42,6 +43,7 @@ export function DisputeStatusPage() {
 
   return (
     <div>
+      <Breadcrumbs items={[{ label: "Home", to: "/" }, { label: "Check Dispute Status" }]} />
       <h1 className="page-title">Check a correction request's status</h1>
       <p className="subtitle">
         Enter the request id you were given when you submitted a correction/dispute request to look up its current
