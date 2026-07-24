@@ -118,9 +118,15 @@ affected workspace, plus live browser checks of both flows):
   reviewer to match and approve like any other candidate record.
 
 Still not built: any real ingestion pipeline (decertification registry sync,
-news monitoring, court docket monitoring — DESIGN.md §5, Phase 2+), and the
+news monitoring, court docket monitoring — DESIGN.md §5, Phase 2+), the
 rest of the DESIGN.md §12 backlog (multi-language, saved searches, FOIA
-tracker, vetted bulk API export).
+tracker, vetted bulk API export), and an officer-edit API + admin page —
+today `POST /api/internal/officers` (create) is the only write path for an
+officer, so there's no way to correct/update an existing one after the
+fact. When this gets built, it must reset `photo_confirmed` (and
+`photo_confirmed_by`/`_at`) to false/NULL whenever `photo_url` changes, or
+a reviewer's earlier confirmation would silently carry over to a swapped-in
+photo it never actually verified — see migration 0017's comment.
 
 `npm audit` is clean (0 vulnerabilities) as of the vite 7/vitest 4 bump
 (dropped the `vite`/`vitest`/`esbuild` dev-server-only advisory,
