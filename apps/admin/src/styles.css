@@ -516,3 +516,19 @@ fieldset.field legend {
   gap: var(--space-3);
   margin-top: var(--space-4);
 }
+
+/* --- mobile nav (admin's second nav group; base.css's shared rule only
+   covers .top-nav-links — see packages/design-system/base.css) --- */
+
+@media (max-width: 767px) {
+  .top-nav-right {
+    display: none;
+    width: 100%;
+  }
+  .top-nav.is-open .top-nav-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: var(--space-3);
+  }
+}
