@@ -104,12 +104,23 @@ dark mode, accessibility pass) across both frontends:
   Reviewers page, an Audit Log page, a weekly-digest Dashboard as the new
   post-login landing page, and bulk-approve with per-item success/failure.
 
+**Latest round**, also verified end-to-end (build+lint+test across every
+affected workspace, plus live browser checks of both flows):
+- Officer photo-verification review gate (DESIGN.md §7): `officers` gained
+  `photo_confirmed`/`photo_confirmed_by`/`photo_confirmed_at`; an unconfirmed
+  `photo_url` is stripped from every public API response (search, browse,
+  detail) in SQL, not just the mapping layer; a new admin Photo Review page
+  lets any reviewer confirm or reject a pending photo.
+- Anonymous, source-protected tip intake (DESIGN.md §12): a public
+  `/tips/new` form that collects zero identifying information (no name, no
+  IP logging) and feeds the existing review-queue pipeline as a
+  `tier4_submitted_unverified`, `low`-confidence `incident_candidate` for a
+  reviewer to match and approve like any other candidate record.
+
 Still not built: any real ingestion pipeline (decertification registry sync,
-news monitoring, court docket monitoring — DESIGN.md §5, Phase 2+), the
-officer disambiguation photo-verification review gate's UI (backend rule
-exists; no photo test data yet), and the rest of the DESIGN.md §12 backlog
-(multi-language, saved searches, FOIA tracker, vetted bulk API export,
-anonymous tip intake).
+news monitoring, court docket monitoring — DESIGN.md §5, Phase 2+), and the
+rest of the DESIGN.md §12 backlog (multi-language, saved searches, FOIA
+tracker, vetted bulk API export).
 
 `npm audit` is clean (0 vulnerabilities) as of the vite 7/vitest 4 bump
 (dropped the `vite`/`vitest`/`esbuild` dev-server-only advisory,
