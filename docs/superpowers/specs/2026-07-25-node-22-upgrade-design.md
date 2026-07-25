@@ -26,12 +26,14 @@ application logic changes.
 - `apps/api-public/Dockerfile` — two `FROM node:20-slim` occurrences
   (lines 7, 21)
 - Root `package.json` — `"engines": {"node": ">=20"}` → `">=22"`
-- `@types/node` — bump from `^20.14.0` to `^22.x` in every `package.json`
-  that declares it (currently three, per `package-lock.json`), for
-  type-accuracy consistency with the new runtime target. Not strictly
-  required (Node's core API surface is additive/stable across majors, so
-  the old types mostly still typecheck), but the right thing to keep in
-  sync rather than leave stale.
+- `@types/node` — bump from `^20.14.0` to `^22.20.1` in every `package.json`
+  that declares it (five: `apps/api-internal`, `apps/api-public`,
+  `apps/ingestion`, `packages/db-tests`, `packages/ingestion-lib` — verified
+  by direct grep of each `package.json`, correcting an earlier undercount
+  from a `package-lock.json`-based check), for type-accuracy consistency
+  with the new runtime target. Not strictly required (Node's core API
+  surface is additive/stable across majors, so the old types mostly still
+  typecheck), but the right thing to keep in sync rather than leave stale.
 - New: `.nvmrc` at the repo root, containing `22` — doesn't exist today;
   adding it now since Node-version pinning is exactly what this
   sub-project is about, and it lets anyone (or CI, if ever configured to
