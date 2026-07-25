@@ -1,0 +1,72 @@
+name: Ingest — NYC CCRB (civilian complaint review board)
+
+# INGESTION_DESIGN.md §3.2 (pivoted from a state decertification registry
+# to a city civilian-complaint-review source -- see
+# docs/superpowers/specs/2026-07-24-nyc-ccrb-ingestion-pipeline-design.md
+# for why) and §1's cost philosophy: GitHub Actions scheduled workflows
+# are the $0 compute layer every ingestion pipeline runs on.
+#
+# Unlike ingest-courtlistener.yml, this pipeline needs no new required
+# secret -- NYC's Socrata API is free and unauthenticated at this
+# pipeline's actual volume (weekly, one department). SOCRATA_APP_TOKEN
+# below is optional (raises Socrata's rate-limit ceiling if ever needed);
+# the workflow runs correctly whether or not that secret is set, since
+# apps/ingestion/src/index.ts reads it as plain process.env access, not
+# through requireEnv.
+#
+# Weekly cadence, same as ingest-courtlistener.yml -- this is a
+# once-a-week snapshot poll, not a real-time feed. workflow_dispatch
+# included for on-demand runs, same convention as every other workflow in
+# this directory.
+on:
+  schedule:
+    # Mondays, 07:00 UTC -- one hour after the CourtListener workflow's
+    # 06:00 slot, so the two never contend for the same runner minute.
+    - cron: "0 7 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # apps/ingestion depends on @cop/ingestion-lib and @cop/shared-types
+      # by their built dist/ output, not by source -- both must be built
+      # first, same as ingest-courtlistener.yml.
+      - name: Build @cop/shared-types
+        run: npm run --workspace packages/shared-types build
+
+      - name: Build @cop/ingestion-lib
+        run: npm run --workspace packages/ingestion-lib build
+
+      - name: Run NYC CCRB ingestion
+        env:
+          # Same secret, same target database/role as
+          # ingest-courtlistener.yml -- see that workflow's own comment
+          # for why this is a distinct name from DATABASE_URL.
+          DATABASE_URL: ${{ secrets.INGESTION_DATABASE_URL }}
+          SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
+        run: npm run --workspace apps/ingestion ingest:nyc-ccrb
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### NYC CCRB ingestion run"
+            echo ""
+            echo "Per-config-row detail (fetched/queued/deduped/errors) is in \`ingestion_runs\`"
+            echo "-- see the admin app's Ingestion Runs page, or query directly:"
+            echo ""
+            echo '```sql'
+            echo "SELECT source_type, started_at, finished_at, items_fetched, items_queued, items_deduped, error"
+            echo "FROM ingestion_runs WHERE source_type = 'nyc_ccrb' ORDER BY started_at DESC LIMIT 10;"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

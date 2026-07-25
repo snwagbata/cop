@@ -11,6 +11,10 @@ export const SEED = {
       id: "00000000-0000-0000-0000-000000000002",
       name: "Shelbyville Police Department (fictional)",
     },
+    nyc: {
+      id: "00000000-0000-0000-0000-000000000003",
+      name: "New York City Police Department",
+    },
   },
   officers: {
     janeDoe: {

@@ -1,5 +1,6 @@
 import pg from "pg";
 import { runCourtListenerPipeline } from "./courtlistener/run.js";
+import { runNycCcrbPipeline } from "./nyc-ccrb/run.js";
 
 const { Pool } = pg;
 
@@ -44,7 +45,21 @@ async function main(): Promise<void> {
     return;
   }
 
-  throw new Error(`Unknown pipeline: "${pipeline}". Known pipelines: courtlistener.`);
+  if (pipeline === "nyc_ccrb") {
+    // SOCRATA_APP_TOKEN is read directly (not via requireEnv) since it's
+    // optional -- process.env.SOCRATA_APP_TOKEN is undefined when unset,
+    // exactly the value NycCcrbRunEnv.socrataAppToken expects for "no
+    // token provided."
+    const pool = new Pool({ connectionString: databaseUrl });
+    try {
+      await runNycCcrbPipeline(pool, { socrataAppToken: process.env.SOCRATA_APP_TOKEN });
+    } finally {
+      await pool.end();
+    }
+    return;
+  }
+
+  throw new Error(`Unknown pipeline: "${pipeline}". Known pipelines: courtlistener, nyc_ccrb.`);
 }
 
 main().catch((err) => {
