@@ -290,14 +290,27 @@ feature), not routine edits.
   submitting via `PATCH`. `departmentId` is rendered read-only with a note
   ("transfer officer" — coming later) rather than omitted entirely, so a
   reviewer isn't left wondering why it's missing.
-- **Getting to the page**: `OfficerSearchPicker`'s existing dropdown
-  results become links to `/officers/:id` (currently rendered as
-  plain non-interactive text) — the cheapest way to make officers
-  discoverable, since a dedicated roster-browse/list page isn't needed yet
-  (search-to-detail covers the actual reviewer workflow; a browse-everything
-  list is easy to add later if it turns out to be needed, but nothing today
-  suggests reviewers need to page through the entire roster without a
-  search term in mind).
+- **Getting to the page — NOT via `OfficerSearchPicker`.** That component
+  is a reusable *picker*: its dropdown results fire `onSelect` back to
+  whatever form embeds it (resolving a review-queue match, adding an
+  officer to an incident). Turning its results into navigation links would
+  break that contract — clicking a result to view details would instead
+  abandon whatever form the reviewer was mid-way through. Three separate,
+  non-invasive additions instead:
+  - **New page**, `apps/admin/src/pages/OfficersPage.tsx`, route
+    `/officers` — a standalone "look someone up" search page (calls the
+    same `GET /api/internal/officers/search` endpoint `OfficerSearchPicker`
+    uses), rendering each result as a real link to `/officers/:id`. This
+    is the actual browse/search entry point; `OfficerSearchPicker` stays
+    unchanged and picker-only.
+  - `OfficerSearchPicker`'s `mode="single"` **selected chip** (rendered
+    only after a pick is already made, so there's no onSelect flow left to
+    interrupt) gets a small "View full record →" link to `/officers/:id`.
+  - `ReviewQueueItemCard.tsx`'s incidental raw-officerId text (currently
+    plain, non-interactive) becomes a link to `/officers/:id`.
+  - Admin's nav (`Layout.tsx`'s `top-nav-links`) gets an "Officers" link
+    to `/officers` — otherwise the new page has no discoverable entry
+    point from primary navigation, unlike every other admin page.
 
 ## Out of scope
 
