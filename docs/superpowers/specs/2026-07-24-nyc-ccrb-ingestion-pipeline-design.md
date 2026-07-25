@@ -168,7 +168,13 @@ Follows INGESTION_DESIGN.md §2's common shape, reusing
   no new secrets required to *run* (public unauthenticated API), one
   optional secret to *improve reliability* (§6).
 
-## 4. Fetch strategy
+## 4. Fetch strategy — SUPERSEDED, see §8
+
+> **This section's `as_of_date` windowing design was live-tested against
+> the real pipeline (not just the raw API) and found broken. See §8 for
+> the corrected design and why. Left in place, marked, rather than
+> silently rewritten — the mistake and how it was caught are worth
+> keeping legible.**
 
 The Allegations dataset is a full snapshot, not an append-only event feed,
 so each run queries a trailing window and relies on the existing
@@ -294,5 +300,73 @@ suite.
   (§2); populating real officers happens through the normal
   `review_queue` → reviewer-approval flow once this pipeline is live and
   producing candidates, not via seed data.
-- The Complaints table (`2mby-ccnw`) join for `incident_date` is optional
-  nice-to-have, not required for a correct `CandidateItem` (§4).
+- ~~The Complaints table join for `incident_date` is optional~~ —
+  **wrong, see §8**: the Complaints join turned out to be required, not
+  optional, for two independent reasons found by actually running the
+  pipeline against the live API.
+
+## 8. Post-implementation correction (live-verified against the running pipeline, not just the raw API)
+
+§4 and §5 above describe the pipeline as originally built and shipped.
+Running it for real — not just curling the API by hand during design, but
+actually executing `runNycCcrbPipeline` end-to-end against a local
+Postgres and the live API — surfaced two real defects §4/§5's "Complaints
+join is optional" framing directly caused. Both fixes are one change:
+promote that join from optional to required, and reorder the fetch.
+
+**Defect 1 — the windowing filter doesn't window anything.** `as_of_date`
+on the Allegations dataset (`6xgr-kwjq`) is not a per-row "last changed"
+timestamp — verified live: every one of the dataset's 430,011 rows shares
+the exact same `as_of_date` value (the date of that day's whole-table
+snapshot regeneration), including a complaint from the year 2000. So
+`$where=as_of_date >= '<30 days ago>'` matches essentially the entire
+table, every run, forever — not a trailing window at all. A real run hit
+exactly `MAX_PAGES × PAGE_SIZE` (50,000) fetched/queued items with zero
+dedup, meaning the fetch was truncated by the hard cap partway through an
+effectively unbounded match, not by reaching the end of a real window.
+
+**Defect 2 — every candidate is unapprovable.** `dateAsReported` was never
+populated (the Complaints join that would supply it was skipped as
+"optional"). `apps/api-internal/src/routes/reviewQueue.ts`'s approve
+handler requires `date` and 400s (`"date is required."`) before it ever
+reaches the DB — and `db/migrations/0007_incidents.sql`'s `incidents.date`
+column is `NOT NULL` regardless. There is also no UI control in
+`ReviewQueueItemCard.tsx` to supply a missing date at approval time. Net
+effect: every single candidate this pipeline queued was permanently stuck
+in `review_queue`, unapprovable through the normal UI.
+
+**The fix — Complaints-first fetch, verified against real data before
+being written down here:**
+
+```
+1. Fetch Complaints (2mby-ccnw) filtered by close_date >= <window>,
+   paginated. Live-checked real volume: 549 complaints closed in a
+   trailing 30-day window (vs. 430,011 rows in the full Allegations
+   table) -- a genuinely bounded, incremental fetch, unlike defect 1's
+   as_of_date approach. close_date is the right field, not
+   ccrb_received_date: this dataset's own description says it covers
+   "outcomes of closed complaints" only -- an unclosed complaint isn't in
+   either table yet, so there's no reason to also filter on received date.
+2. Batch-fetch Allegations (6xgr-kwjq) by
+   $where=complaint_id in(...) over the complaint_ids from step 1 --
+   same batched-IN-query pattern already built for the officer join
+   (§4's tax_id batching), reused rather than duplicated.
+3. Batch-fetch Officers (2fir-qns4) by tax_id, unchanged from §4.
+4. Join all three: each NycCcrbAllegation now also carries
+   incidentDate (from step 1's per-complaint incident_date), not just
+   officer identity (step 3) and allegation detail (step 2).
+```
+
+`dateAsReported` in §5's `CandidateItem` mapping becomes
+`allegation.incidentDate ?? undefined`, sourced from this now-required
+join, not the optional one §5 originally described.
+
+`externalRef` in §5's code block is stale in one more way: it still shows
+the pre-fix-wave `${complaint_id}:${complaint_officer_number}` key. The
+already-shipped code (fixed during this pipeline's own final code review,
+before this §8 correction) uses `${complaintId}:${allegationRecordIdentity}`
+instead, since `complaint_officer_number` doesn't uniquely identify a row
+when one officer has multiple allegations on one complaint. That fix is
+already live in `run.ts`; §5's code sample above was never updated to
+match — noted here for the record, not something this correction needs to
+redo.
