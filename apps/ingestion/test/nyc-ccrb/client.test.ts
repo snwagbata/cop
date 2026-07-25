@@ -2,12 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchNycCcrbAllegations } from "../../src/nyc-ccrb/client.js";
 
 /**
- * Mocked-HTTP tests for the NYC CCRB Socrata client. Unlike
- * courtlistener/client.ts, every query pattern asserted here (`$where`
- * date filter, `$offset` pagination, `$where tax_id in(...)` batch join)
- * was live-verified against the real data.cityofnewyork.us API during
- * this pipeline's design -- see
- * docs/superpowers/specs/2026-07-24-nyc-ccrb-ingestion-pipeline-design.md.
+ * Mocked-HTTP tests for the NYC CCRB Socrata client. Every query pattern
+ * asserted here ($where close_date filter on Complaints, $where
+ * complaint_id in(...) batch fetch of Allegations, $where tax_id in(...)
+ * batch join of Officers) was live-verified against the real
+ * data.cityofnewyork.us API -- see
+ * docs/superpowers/specs/2026-07-24-nyc-ccrb-ingestion-pipeline-design.md
+ * §8 for why this Complaints-first flow replaced the original
+ * Allegations-first design (the original's as_of_date filter turned out
+ * to not filter by date at all).
  */
 
 function jsonResponse(body: unknown, init?: { status?: number; statusText?: string }): Response {
@@ -18,13 +21,21 @@ function jsonResponse(body: unknown, init?: { status?: number; statusText?: stri
   });
 }
 
+function urlFor(mock: ReturnType<typeof vi.fn>, datasetId: string, callIndex = 0): URL {
+  const calls = mock.mock.calls.filter(([url]: [string]) => url.includes(datasetId));
+  return new URL(calls[callIndex][0]);
+}
+
 describe("fetchNycCcrbAllegations", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("fetches allegations and joins officer identity by tax_id", async () => {
+  it("fetches closed complaints, joins matching allegations by complaint_id, and joins officer identity by tax_id", async () => {
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("2mby-ccnw")) {
+        return jsonResponse([{ complaint_id: "201806447", incident_date: "2018-01-05" }]);
+      }
       if (url.includes("6xgr-kwjq")) {
         return jsonResponse([
           {
@@ -41,12 +52,7 @@ describe("fetchNycCcrbAllegations", () => {
       }
       // 2fir-qns4 (officers)
       return jsonResponse([
-        {
-          tax_id: "942643",
-          officer_first_name: "Alfred",
-          officer_last_name: "Hernandez",
-          shield_no: "05046",
-        },
+        { tax_id: "942643", officer_first_name: "Alfred", officer_last_name: "Hernandez", shield_no: "05046" },
       ]);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -65,81 +71,85 @@ describe("fetchNycCcrbAllegations", () => {
         officerFirstName: "Alfred",
         officerLastName: "Hernandez",
         shieldNo: "05046",
+        incidentDate: "2018-01-05",
       },
     ]);
 
-    // Officer join batched the one tax_id found in the allegations page.
-    const officerCall = fetchMock.mock.calls.find(([url]: [string]) => url.includes("2fir-qns4"));
-    expect(officerCall).toBeDefined();
-    const officerUrl = new URL(officerCall![0]);
-    expect(officerUrl.searchParams.get("$where")).toBe("tax_id in('942643')");
+    const complaintsUrl = urlFor(fetchMock, "2mby-ccnw");
+    expect(complaintsUrl.searchParams.get("$where")).toMatch(/^close_date >= '\d{4}-\d{2}-\d{2}'$/);
+
+    const allegationsUrl = urlFor(fetchMock, "6xgr-kwjq");
+    expect(allegationsUrl.searchParams.get("$where")).toBe("complaint_id in('201806447')");
+
+    const officersUrl = urlFor(fetchMock, "2fir-qns4");
+    expect(officersUrl.searchParams.get("$where")).toBe("tax_id in('942643')");
   });
 
-  it("follows $offset pagination until a page returns fewer than PAGE_SIZE rows", async () => {
-    const fullPage = Array.from({ length: 1000 }, (_, i) => ({
-      complaint_id: String(i),
-      complaint_officer_number: "1",
-      allegation_record_identity: String(100000 + i),
-      fado_type: "Discourtesy",
-      allegation: "Action",
-    }));
-    const shortPage = [
-      {
-        complaint_id: "1000",
-        complaint_officer_number: "1",
-        allegation_record_identity: "101000",
-        fado_type: "Discourtesy",
-        allegation: "Action",
-      },
-    ];
+  it("follows $offset pagination on the Complaints fetch until a page returns fewer than PAGE_SIZE rows", async () => {
+    const fullPage = Array.from({ length: 1000 }, (_, i) => ({ complaint_id: String(i), incident_date: "2020-01-01" }));
+    const shortPage = [{ complaint_id: "1000", incident_date: "2020-01-01" }];
 
-    let allegationCallCount = 0;
+    let complaintsCallCount = 0;
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
-      if (url.includes("6xgr-kwjq")) {
-        allegationCallCount++;
-        return jsonResponse(allegationCallCount === 1 ? fullPage : shortPage);
+      if (url.includes("2mby-ccnw")) {
+        complaintsCallCount++;
+        return jsonResponse(complaintsCallCount === 1 ? fullPage : shortPage);
       }
-      return jsonResponse([]); // no tax_ids in this fixture, officer join returns nothing
+      return jsonResponse([]); // no allegations/officers in this fixture
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchNycCcrbAllegations();
+
+    expect(complaintsCallCount).toBe(2);
+    const secondCallUrl = urlFor(fetchMock, "2mby-ccnw", 1);
+    expect(secondCallUrl.searchParams.get("$offset")).toBe("1000");
+  });
+
+  it("returns an empty result and skips both the allegations and officer fetch when there are no closed complaints in the window", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("2mby-ccnw")) {
+        return jsonResponse([]);
+      }
+      throw new Error(`unexpected fetch to ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
 
     const allegations = await fetchNycCcrbAllegations();
 
-    expect(allegations).toHaveLength(1001);
-    expect(allegationCallCount).toBe(2);
-    const secondCallUrl = new URL(fetchMock.mock.calls.filter(([url]: [string]) => url.includes("6xgr-kwjq"))[1][0]);
-    expect(secondCallUrl.searchParams.get("$offset")).toBe("1000");
+    expect(allegations).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // only the Complaints call
   });
 
-  it("returns an empty result and skips the officer fetch entirely when there are no allegations", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
+  it("returns an empty result and skips the officer fetch when there are complaints but no matching allegations", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("2mby-ccnw")) {
+        return jsonResponse([{ complaint_id: "1", incident_date: "2020-01-01" }]);
+      }
+      if (url.includes("6xgr-kwjq")) {
+        return jsonResponse([]);
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const allegations = await fetchNycCcrbAllegations();
 
     expect(allegations).toEqual([]);
-    expect(fetchMock).toHaveBeenCalledTimes(1); // only the allegations call, no officer join call
+    expect(fetchMock).toHaveBeenCalledTimes(2); // Complaints + Allegations, no Officers call
   });
 
   it("skips an allegation row missing complaint_id, complaint_officer_number, or allegation_record_identity rather than throwing", async () => {
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("2mby-ccnw")) {
+        return jsonResponse([{ complaint_id: "6", incident_date: "2020-01-01" }]);
+      }
       if (url.includes("6xgr-kwjq")) {
         return jsonResponse([
-          {
-            complaint_officer_number: "1",
-            allegation_record_identity: "240280",
-            fado_type: "Force",
-            allegation: "No complaint id",
-          },
+          { complaint_officer_number: "1", allegation_record_identity: "240280", fado_type: "Force", allegation: "No complaint id" },
           { complaint_id: "5", allegation_record_identity: "240281", fado_type: "Force", allegation: "No officer number" },
           { complaint_id: "7", complaint_officer_number: "1", fado_type: "Force", allegation: "No allegation record identity" },
-          {
-            complaint_id: "6",
-            complaint_officer_number: "1",
-            allegation_record_identity: "240282",
-            fado_type: "Force",
-            allegation: "Has all three",
-          },
+          { complaint_id: "6", complaint_officer_number: "1", allegation_record_identity: "240282", fado_type: "Force", allegation: "Has all three" },
         ]);
       }
       return jsonResponse([]);
@@ -152,38 +162,14 @@ describe("fetchNycCcrbAllegations", () => {
     expect(allegations[0].complaintId).toBe("6");
   });
 
-  it("normalizes multiple allegation rows sharing the same complaint_id and complaint_officer_number but different allegation_record_identity as distinct, non-duplicate allegations", async () => {
-    // Regression test: complaint_id + complaint_officer_number alone is
-    // NOT a unique key -- a single complaint+officer pair can have
-    // multiple distinct allegation rows (e.g. "Force" and "Abuse of
-    // Authority" against the same officer on the same complaint).
-    // Live-verified against the real API: complaint_id=200000003,
-    // complaint_officer_number=1 returns 3 rows with distinct
-    // allegation_record_identity values (240282, 240281, 240280).
+  it("sets incidentDate to null when the matching complaint has no incident_date", async () => {
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("2mby-ccnw")) {
+        return jsonResponse([{ complaint_id: "6" }]); // no incident_date field at all
+      }
       if (url.includes("6xgr-kwjq")) {
         return jsonResponse([
-          {
-            complaint_id: "200000003",
-            complaint_officer_number: "1",
-            allegation_record_identity: "240282",
-            fado_type: "Force",
-            allegation: "Physical force",
-          },
-          {
-            complaint_id: "200000003",
-            complaint_officer_number: "1",
-            allegation_record_identity: "240281",
-            fado_type: "Abuse of Authority",
-            allegation: "Failure to provide RTKA card",
-          },
-          {
-            complaint_id: "200000003",
-            complaint_officer_number: "1",
-            allegation_record_identity: "240280",
-            fado_type: "Discourtesy",
-            allegation: "Word",
-          },
+          { complaint_id: "6", complaint_officer_number: "1", allegation_record_identity: "240282", fado_type: "Force", allegation: "x" },
         ]);
       }
       return jsonResponse([]);
@@ -192,16 +178,11 @@ describe("fetchNycCcrbAllegations", () => {
 
     const allegations = await fetchNycCcrbAllegations();
 
-    expect(allegations).toHaveLength(3);
-    const identities = allegations.map((a) => a.allegationRecordIdentity).sort();
-    expect(identities).toEqual(["240280", "240281", "240282"]);
-    for (const a of allegations) {
-      expect(a.complaintId).toBe("200000003");
-      expect(a.complaintOfficerNumber).toBe("1");
-    }
+    expect(allegations).toHaveLength(1);
+    expect(allegations[0].incidentDate).toBeNull();
   });
 
-  it("sends the X-App-Token header when an app token is provided, and omits it when not", async () => {
+  it("sends the X-App-Token header on every request when an app token is provided, and omits it when not", async () => {
     const fetchMock = vi.fn().mockImplementation(() => jsonResponse([]));
     vi.stubGlobal("fetch", fetchMock);
 

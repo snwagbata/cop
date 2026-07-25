@@ -1,34 +1,41 @@
 /**
  * NYC CCRB (Civilian Complaint Review Board) Socrata Open Data client --
- * INGESTION_DESIGN.md §3.2's pilot, pivoted from a state decertification
- * registry to a city civilian-complaint-review source. See
+ * INGESTION_DESIGN.md §3.2's pilot. See
  * docs/superpowers/specs/2026-07-24-nyc-ccrb-ingestion-pipeline-design.md
- * for why, and for the full schema this file's types mirror.
+ * §8 for why this fetch is Complaints-first: the original Allegations-first
+ * design filtered on as_of_date, which turned out to be a single
+ * whole-table snapshot timestamp shared by all 430,011 rows, not a
+ * per-row date -- live-verified to not window anything at all. The
+ * Complaints dataset (2mby-ccnw) has a genuine per-row close_date
+ * (live-verified range: 2000-2026), and only 549 complaints closed in a
+ * live-checked trailing 30-day window, vs. 430,011 total Allegations rows
+ * -- a properly bounded fetch.
  *
- * Two joined Socrata datasets on data.cityofnewyork.us. Every query
- * pattern below ($where date filter, $offset pagination, $where
- * tax_id in(...) batch join) was live-verified against the real API
- * during this pipeline's design -- unlike courtlistener/client.ts, this
- * file does not ship with an "unverified contract" warning.
+ * Three joined Socrata datasets on data.cityofnewyork.us:
+ *   - 2mby-ccnw: Complaints Against Police Officers (windowing source --
+ *     fetched first, filtered by close_date, for complaint_id + incident_date)
  *   - 6xgr-kwjq: Allegations Against Police Officers (fetch target --
- *     one row per complaint+officer+allegation triple)
+ *     one row per complaint+officer+allegation triple, batch-fetched by
+ *     the complaint_ids found above)
  *   - 2fir-qns4: Police Officers (joined by tax_id, for name/shield)
  */
 
 const BASE_URL = "https://data.cityofnewyork.us/resource";
+const COMPLAINTS_DATASET = "2mby-ccnw";
 const ALLEGATIONS_DATASET = "6xgr-kwjq";
 const OFFICERS_DATASET = "2fir-qns4";
 
 const PAGE_SIZE = 1000;
-/** Hard cap so a misbehaving/unexpectedly large window can't turn one run
- * into an unbounded fetch loop -- same defensive convention as
- * courtlistener/client.ts's MAX_PAGES, generous relative to this
- * pipeline's actual expected volume (a 30-day window of one department's
- * allegations). */
-const MAX_PAGES = 50;
-/** Socrata SoQL query-string length is comfortably fine at this batch
- * size for tax_id lookups. */
-const OFFICER_BATCH_SIZE = 200;
+/** Hard cap on Complaints pagination so a misbehaving/unexpectedly large
+ * window can't turn one run into an unbounded fetch loop. Generous
+ * relative to this pipeline's live-verified actual volume (549
+ * complaints/30-day window) -- 10 pages would mean 10,000 complaints
+ * closed in that window, ~18x the observed rate. */
+const MAX_PAGES = 10;
+/** Shared by both batched $where <field> in(...) queries below (complaint_id
+ * against Allegations, tax_id against Officers) -- Socrata SoQL
+ * query-string length is comfortably fine at this batch size for either. */
+const BATCH_SIZE = 200;
 
 /** Normalized shape this client produces -- the only thing run.ts depends
  * on. */
@@ -52,6 +59,15 @@ export interface NycCcrbAllegation {
   officerFirstName: string | null;
   officerLastName: string | null;
   shieldNo: string | null;
+  /** From the Complaints join -- null if that complaint had no
+   * incident_date on file (rare; run.ts surfaces a note when this
+   * happens, since a date is required for review-queue approval). */
+  incidentDate: string | null;
+}
+
+interface RawComplaintRow {
+  complaint_id?: string;
+  incident_date?: string;
 }
 
 interface RawAllegationRow {
@@ -102,39 +118,95 @@ async function fetchSocrataJson<T>(url: string, appToken?: string): Promise<T> {
 }
 
 /**
- * Fetches allegations with `as_of_date` within the trailing `sinceDays`
- * window (default 30 -- generous overlap; already-seen rows are filtered
- * by hasBeenQueued in run.ts before any DB write), paginated via
- * $limit/$offset until a page returns fewer than PAGE_SIZE rows, then
- * batch-joins officer name/shield by tax_id.
+ * Batched `$where <field> in(...)` fetch against any of this client's
+ * three datasets -- shared by the complaint_id (Allegations) and tax_id
+ * (Officers) joins below rather than duplicating the batching/escaping
+ * logic twice.
+ */
+async function fetchBatchedIn<T>(dataset: string, field: string, values: string[], appToken?: string): Promise<T[]> {
+  const results: T[] = [];
+  if (values.length === 0) {
+    return results;
+  }
+
+  for (let i = 0; i < values.length; i += BATCH_SIZE) {
+    const batch = values.slice(i, i + BATCH_SIZE);
+    const quoted = batch.map((v) => `'${v.replace(/'/g, "''")}'`).join(",");
+    const params = new URLSearchParams();
+    params.set("$where", `${field} in(${quoted})`);
+    params.set("$limit", String(BATCH_SIZE));
+    const url = `${BASE_URL}/${dataset}.json?${params.toString()}`;
+
+    const rows = await fetchSocrataJson<T[]>(url, appToken);
+    results.push(...rows);
+  }
+  return results;
+}
+
+/**
+ * Fetches complaints closed within the trailing `sinceDays` window
+ * (default 30), paginated via $limit/$offset until a page returns fewer
+ * than PAGE_SIZE rows. This is the pipeline's actual incremental-window
+ * source (see file-level comment) -- already-seen complaints are filtered
+ * by hasBeenQueued in run.ts before any DB write, same as before.
+ */
+async function fetchClosedComplaints(sinceDays: number, appToken?: string): Promise<Map<string, string | null>> {
+  const sinceDate = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const incidentDateByComplaintId = new Map<string, string | null>();
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const params = new URLSearchParams();
+    params.set("$where", `close_date >= '${sinceDate}'`);
+    params.set("$select", "complaint_id,incident_date");
+    params.set("$limit", String(PAGE_SIZE));
+    params.set("$offset", String(page * PAGE_SIZE));
+    const url = `${BASE_URL}/${COMPLAINTS_DATASET}.json?${params.toString()}`;
+
+    const rows = await fetchSocrataJson<RawComplaintRow[]>(url, appToken);
+    for (const row of rows) {
+      if (row.complaint_id) {
+        incidentDateByComplaintId.set(row.complaint_id, row.incident_date ?? null);
+      }
+    }
+    if (rows.length < PAGE_SIZE) {
+      break;
+    }
+  }
+  return incidentDateByComplaintId;
+}
+
+/**
+ * Fetches allegations, complaints-first: queries Complaints for the
+ * trailing `sinceDays` window, batch-fetches matching Allegations by
+ * complaint_id, then batch-joins officer name/shield by tax_id.
  */
 export async function fetchNycCcrbAllegations(
   options: { sinceDays?: number; appToken?: string } = {},
 ): Promise<NycCcrbAllegation[]> {
   const sinceDays = options.sinceDays ?? 30;
-  const sinceDate = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const rawAllegations: RawAllegationRow[] = [];
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const params = new URLSearchParams();
-    params.set("$where", `as_of_date >= '${sinceDate}'`);
-    params.set("$limit", String(PAGE_SIZE));
-    params.set("$offset", String(page * PAGE_SIZE));
-    const url = `${BASE_URL}/${ALLEGATIONS_DATASET}.json?${params.toString()}`;
+  const incidentDateByComplaintId = await fetchClosedComplaints(sinceDays, options.appToken);
+  const complaintIds = [...incidentDateByComplaintId.keys()];
 
-    const rows = await fetchSocrataJson<RawAllegationRow[]>(url, options.appToken);
-    rawAllegations.push(...rows);
-    if (rows.length < PAGE_SIZE) {
-      break;
+  const rawAllegations = await fetchBatchedIn<RawAllegationRow>(
+    ALLEGATIONS_DATASET,
+    "complaint_id",
+    complaintIds,
+    options.appToken,
+  );
+
+  const taxIds = [...new Set(rawAllegations.map((r) => r.tax_id).filter((id): id is string => Boolean(id)))];
+  const officerRows = await fetchBatchedIn<RawOfficerRow>(OFFICERS_DATASET, "tax_id", taxIds, options.appToken);
+  const officersByTaxId = new Map<string, RawOfficerRow>();
+  for (const row of officerRows) {
+    if (row.tax_id) {
+      officersByTaxId.set(row.tax_id, row);
     }
   }
 
-  const taxIds = [...new Set(rawAllegations.map((r) => r.tax_id).filter((id): id is string => Boolean(id)))];
-  const officersByTaxId = await fetchOfficersByTaxId(taxIds, options.appToken);
-
   const results: NycCcrbAllegation[] = [];
   for (const raw of rawAllegations) {
-    const normalized = normalizeAllegation(raw, officersByTaxId);
+    const normalized = normalizeAllegation(raw, officersByTaxId, incidentDateByComplaintId);
     if (normalized !== null) {
       results.push(normalized);
     }
@@ -142,31 +214,11 @@ export async function fetchNycCcrbAllegations(
   return results;
 }
 
-async function fetchOfficersByTaxId(taxIds: string[], appToken?: string): Promise<Map<string, RawOfficerRow>> {
-  const byTaxId = new Map<string, RawOfficerRow>();
-  if (taxIds.length === 0) {
-    return byTaxId;
-  }
-
-  for (let i = 0; i < taxIds.length; i += OFFICER_BATCH_SIZE) {
-    const batch = taxIds.slice(i, i + OFFICER_BATCH_SIZE);
-    const quoted = batch.map((id) => `'${id.replace(/'/g, "''")}'`).join(",");
-    const params = new URLSearchParams();
-    params.set("$where", `tax_id in(${quoted})`);
-    params.set("$limit", String(OFFICER_BATCH_SIZE));
-    const url = `${BASE_URL}/${OFFICERS_DATASET}.json?${params.toString()}`;
-
-    const rows = await fetchSocrataJson<RawOfficerRow[]>(url, appToken);
-    for (const row of rows) {
-      if (row.tax_id) {
-        byTaxId.set(row.tax_id, row);
-      }
-    }
-  }
-  return byTaxId;
-}
-
-function normalizeAllegation(raw: RawAllegationRow, officersByTaxId: Map<string, RawOfficerRow>): NycCcrbAllegation | null {
+function normalizeAllegation(
+  raw: RawAllegationRow,
+  officersByTaxId: Map<string, RawOfficerRow>,
+  incidentDateByComplaintId: Map<string, string | null>,
+): NycCcrbAllegation | null {
   if (!raw.complaint_id || !raw.complaint_officer_number || !raw.allegation_record_identity) {
     // No stable composite id -- can't dedupe this row. Skip rather than
     // throw, same defensive-parsing convention as courtlistener/client.ts.
@@ -186,5 +238,6 @@ function normalizeAllegation(raw: RawAllegationRow, officersByTaxId: Map<string,
     officerFirstName: officer?.officer_first_name ?? null,
     officerLastName: officer?.officer_last_name ?? null,
     shieldNo: officer?.shield_no ?? null,
+    incidentDate: incidentDateByComplaintId.get(raw.complaint_id) ?? null,
   };
 }
