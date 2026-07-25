@@ -165,6 +165,37 @@ export interface ResolvedDisputeSummary {
   resolvedAt: string;
 }
 
+export interface InternalOfficerDetail {
+  id: string;
+  firstName: string;
+  lastName: string;
+  knownAliases: string[];
+  departmentId: string;
+  departmentName: string;
+  badgeNumber: string | null;
+  rank: string | null;
+  hireDate: string | null;
+  employmentStatus: EmploymentStatus;
+  postCertificationId: string | null;
+  photoUrl: string | null;
+  photoConfirmed: boolean;
+  createdAt: string;
+  departmentHistory: OfficerDepartmentHistoryEntry[];
+  incidentCount: number;
+  outcomeCount: number;
+}
+
+export interface UpdateOfficerRequest {
+  firstName?: string;
+  lastName?: string;
+  knownAliases?: string[];
+  badgeNumber?: string | null;
+  rank?: string | null;
+  employmentStatus?: EmploymentStatus;
+  postCertificationId?: string | null;
+  photoUrl?: string | null;
+}
+
 export interface OfficerDetail {
   id: string;
   firstName: string;
