@@ -108,11 +108,21 @@ async function runOneConfigRow(
         departmentName: config.departmentName,
       });
 
-      const note = !officerName
-        ? "NYPD's CCRB roster did not return an officer name for this allegation's tax_id -- verify identity before approving."
-        : !allegation.shieldNo
-          ? "No shield number on file for this officer in NYPD's CCRB roster -- verify identity before approving."
-          : undefined;
+      const noteParts: string[] = [];
+      if (!officerName) {
+        noteParts.push(
+          "NYPD's CCRB roster did not return an officer name for this allegation's tax_id -- verify identity before approving.",
+        );
+      } else if (!allegation.shieldNo) {
+        noteParts.push(
+          "No shield number on file for this officer in NYPD's CCRB roster -- verify identity before approving.",
+        );
+      }
+      if (!allegation.incidentDate) {
+        noteParts.push(
+          "No incident date returned by NYC's Complaints dataset for this allegation's complaint_id -- a date is required before this candidate can be approved.",
+        );
+      }
 
       const item: CandidateItem = {
         sourceType: "official_dataset",
@@ -124,7 +134,8 @@ async function runOneConfigRow(
         shortDescription:
           `CCRB complaint: ${allegation.fadoType} - ${allegation.allegation}` +
           (allegation.ccrbDisposition ? ` (${allegation.ccrbDisposition}).` : "."),
-        note,
+        dateAsReported: allegation.incidentDate ?? undefined,
+        note: noteParts.length > 0 ? noteParts.join(" ") : undefined,
       };
 
       const client = await pool.connect();

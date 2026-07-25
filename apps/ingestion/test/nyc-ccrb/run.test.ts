@@ -20,6 +20,7 @@ function allegation(overrides: Partial<NycCcrbAllegation> = {}): NycCcrbAllegati
     officerFirstName: "Alfred",
     officerLastName: "Hernandez",
     shieldNo: "05046",
+    incidentDate: "2018-01-05",
     ...overrides,
   };
 }
@@ -87,6 +88,7 @@ describe("runNycCcrbPipeline", () => {
       officerId,
       departmentName: SEED.departments.nyc.name,
       incidentType: "use_of_force",
+      date: "2018-01-05",
     });
 
     const runRows = await pool.query(
@@ -165,6 +167,21 @@ describe("runNycCcrbPipeline", () => {
 
     const runRows = await pool.query(`SELECT items_fetched, items_queued, items_deduped FROM ingestion_runs`);
     expect(runRows.rows[0]).toMatchObject({ items_fetched: 2, items_queued: 2, items_deduped: 0 });
+  });
+
+  it("queues a candidate with a note (in addition to any other note) when the matched complaint had no incident date", async () => {
+    await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
+
+    const fetchNycCcrbAllegations = vi.fn().mockResolvedValue([allegation({ incidentDate: null })]);
+
+    await runNycCcrbPipeline(pool, ENV, { fetchNycCcrbAllegations });
+
+    const reviewQueueRows = await pool.query(
+      `SELECT rq.proposed_record FROM review_queue rq JOIN sources s ON s.id = rq.source_id WHERE s.external_ref = '201806447:240280'`,
+    );
+    expect(reviewQueueRows.rows).toHaveLength(1);
+    expect(reviewQueueRows.rows[0].proposed_record.date).toBeUndefined();
+    expect(reviewQueueRows.rows[0].proposed_record.note).toMatch(/no incident date/i);
   });
 
   it("queues a low-confidence candidate with a note when no shield number is on file", async () => {
