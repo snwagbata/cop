@@ -121,6 +121,13 @@ main.page {
   margin: var(--space-2) 0 var(--space-3);
 }
 
+@media (max-width: 767px) {
+  .kv-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+}
+
 .kv-grid dt {
   color: var(--text-muted);
 }
@@ -203,6 +210,7 @@ select:focus {
 
 .bulk-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
@@ -515,4 +523,23 @@ fieldset.field legend {
   align-items: center;
   gap: var(--space-3);
   margin-top: var(--space-4);
+}
+
+/* --- mobile nav (admin's second nav group; base.css's shared rule only
+   covers .top-nav-links — see packages/design-system/base.css) --- */
+
+@media (max-width: 767px) {
+  .top-nav-left {
+    flex-wrap: wrap;
+  }
+  .top-nav-right {
+    display: none;
+    width: 100%;
+  }
+  .top-nav.is-open .top-nav-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: var(--space-3);
+  }
 }

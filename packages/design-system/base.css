@@ -292,3 +292,64 @@ th {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* --- mobile nav (first width-based breakpoint in this codebase; see
+   docs/superpowers/specs/2026-07-24-mobile-nav-and-spa-routing-design.md) --- */
+
+.nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.nav-toggle-bar {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: currentColor;
+}
+.nav-toggle-bar::before,
+.nav-toggle-bar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 18px;
+  height: 2px;
+  background: currentColor;
+}
+.nav-toggle-bar::before {
+  top: -6px;
+}
+.nav-toggle-bar::after {
+  top: 6px;
+}
+
+@media (max-width: 767px) {
+  .top-nav {
+    flex-wrap: wrap;
+  }
+  .nav-toggle {
+    display: inline-flex;
+  }
+  .top-nav-links {
+    display: none;
+    width: 100%;
+  }
+  .top-nav.is-open .top-nav-links {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+  }
+}

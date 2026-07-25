@@ -8,3 +8,8 @@ build/
 # Active agent worktrees (isolation: "worktree" runs) — these are separate
 # git checkouts under their own branches, not content of this branch.
 .claude/worktrees/
+
+# Subagent-driven-development scratch workspace (ledgers, task briefs,
+# review packages) — not part of the codebase.
+.superpowers/
+
