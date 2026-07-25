@@ -85,7 +85,7 @@ describe("fetchNycCcrbAllegations", () => {
     expect(officersUrl.searchParams.get("$where")).toBe("tax_id in('942643')");
   });
 
-  it("follows $offset pagination on the Complaints fetch until a page returns fewer than PAGE_SIZE rows", async () => {
+  it("follows $offset pagination on the Complaints-specific fetch (fetchClosedComplaints) until a page returns fewer than PAGE_SIZE rows", async () => {
     const fullPage = Array.from({ length: 1000 }, (_, i) => ({ complaint_id: String(i), incident_date: "2020-01-01" }));
     const shortPage = [{ complaint_id: "1000", incident_date: "2020-01-01" }];
 
@@ -103,6 +103,49 @@ describe("fetchNycCcrbAllegations", () => {
 
     expect(complaintsCallCount).toBe(2);
     const secondCallUrl = urlFor(fetchMock, "2mby-ccnw", 1);
+    expect(secondCallUrl.searchParams.get("$offset")).toBe("1000");
+  });
+
+  it("follows $offset pagination WITHIN a single ID batch on the shared fetchBatchedIn helper (Allegations join), returning all matching rows instead of capping at one page", async () => {
+    const fullPage = Array.from({ length: 1000 }, (_, i) => ({
+      complaint_id: "1",
+      complaint_officer_number: String(i),
+      allegation_record_identity: String(i),
+      fado_type: "Force",
+      allegation: "Physical force",
+    }));
+    const shortPage = [
+      {
+        complaint_id: "1",
+        complaint_officer_number: "1000",
+        allegation_record_identity: "1000",
+        fado_type: "Force",
+        allegation: "Physical force",
+      },
+    ];
+
+    let allegationsCallCount = 0;
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("2mby-ccnw")) {
+        return jsonResponse([{ complaint_id: "1", incident_date: "2020-01-01" }]);
+      }
+      if (url.includes("6xgr-kwjq")) {
+        allegationsCallCount++;
+        return jsonResponse(allegationsCallCount === 1 ? fullPage : shortPage);
+      }
+      return jsonResponse([]); // no officers in this fixture (no tax_id on any row)
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const allegations = await fetchNycCcrbAllegations();
+
+    expect(allegations).toHaveLength(1001);
+    expect(allegationsCallCount).toBe(2);
+
+    const firstCallUrl = urlFor(fetchMock, "6xgr-kwjq", 0);
+    const secondCallUrl = urlFor(fetchMock, "6xgr-kwjq", 1);
+    expect(secondCallUrl.searchParams.get("$where")).toBe(firstCallUrl.searchParams.get("$where"));
+    expect(firstCallUrl.searchParams.get("$offset")).toBe("0");
     expect(secondCallUrl.searchParams.get("$offset")).toBe("1000");
   });
 

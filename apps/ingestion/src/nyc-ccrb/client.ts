@@ -132,13 +132,21 @@ async function fetchBatchedIn<T>(dataset: string, field: string, values: string[
   for (let i = 0; i < values.length; i += BATCH_SIZE) {
     const batch = values.slice(i, i + BATCH_SIZE);
     const quoted = batch.map((v) => `'${v.replace(/'/g, "''")}'`).join(",");
-    const params = new URLSearchParams();
-    params.set("$where", `${field} in(${quoted})`);
-    params.set("$limit", String(BATCH_SIZE));
-    const url = `${BASE_URL}/${dataset}.json?${params.toString()}`;
+    const whereClause = `${field} in(${quoted})`;
 
-    const rows = await fetchSocrataJson<T[]>(url, appToken);
-    results.push(...rows);
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const params = new URLSearchParams();
+      params.set("$where", whereClause);
+      params.set("$limit", String(PAGE_SIZE));
+      params.set("$offset", String(page * PAGE_SIZE));
+      const url = `${BASE_URL}/${dataset}.json?${params.toString()}`;
+
+      const rows = await fetchSocrataJson<T[]>(url, appToken);
+      results.push(...rows);
+      if (rows.length < PAGE_SIZE) {
+        break;
+      }
+    }
   }
   return results;
 }
