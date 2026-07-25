@@ -4,7 +4,7 @@
 #   docker build -f apps/api-public/Dockerfile -t cop-api-public .
 # (run from the repo root, not from apps/api-public/).
 
-FROM node:20-slim AS build
+FROM node:22-slim AS build
 WORKDIR /repo
 
 # Copy the whole repo rather than cherry-picking package.json files — this
@@ -18,7 +18,7 @@ RUN npm run --workspace packages/shared-types build
 RUN npm run --workspace apps/api-public build
 RUN npm prune --omit=dev
 
-FROM node:20-slim AS runtime
+FROM node:22-slim AS runtime
 WORKDIR /repo
 ENV NODE_ENV=production
 COPY --from=build /repo/node_modules ./node_modules
