@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { OfficerSearchCandidate, ReviewQueueItem } from "@cop/shared-types";
 import { OfficerSearchPicker } from "./OfficerSearchPicker";
 
@@ -245,7 +246,17 @@ function renderDetails(rec: ReviewQueueItem["proposedRecord"]) {
       <dt>Date</dt>
       <dd>{rec.date ? formatDate(rec.date) : "—"}</dd>
       <dt>Officer match</dt>
-      <dd>{rec.officerId ? `matched (${rec.officerId})` : rec.officerName ? `${rec.officerName} (unmatched)` : "unmatched"}</dd>
+      <dd>
+        {rec.officerId ? (
+          <>
+            matched (<Link to={`/officers/${encodeURIComponent(rec.officerId)}`}>{rec.officerId}</Link>)
+          </>
+        ) : rec.officerName ? (
+          `${rec.officerName} (unmatched)`
+        ) : (
+          "unmatched"
+        )}
+      </dd>
       <dt>Description</dt>
       <dd>{rec.shortDescription ?? "— (missing from source record)"}</dd>
       {rec.externalUrl && (

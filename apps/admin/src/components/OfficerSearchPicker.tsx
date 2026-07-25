@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { OfficerSearchCandidate } from "@cop/shared-types";
 import * as api from "../api/client";
 
@@ -110,7 +111,8 @@ export function OfficerSearchPicker({
             </div>
             <div className="officer-chip-meta">
               {selected.departmentName} · {selected.badgeNumber ? `badge #${selected.badgeNumber}` : "no badge on file"} ·{" "}
-              active {formatActiveRange(selected)}
+              active {formatActiveRange(selected)} ·{" "}
+              <Link to={`/officers/${encodeURIComponent(selected.id)}`}>View full record</Link>
             </div>
           </div>
           <button type="button" className="btn btn-secondary btn-sm" onClick={handleChange} disabled={disabled}>

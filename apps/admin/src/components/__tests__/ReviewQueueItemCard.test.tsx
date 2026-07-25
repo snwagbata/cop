@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { ReviewQueueItemCard } from "../ReviewQueueItemCard";
 import { reviewQueueFixtures } from "../../fixtures/reviewQueue";
 import { officerSearchFixtures } from "../../fixtures/officers";
@@ -14,6 +15,10 @@ vi.mock("../../api/client", async () => {
   };
 });
 
+function renderCard(ui: Parameters<typeof render>[0]) {
+  return render(ui, { wrapper: MemoryRouter });
+}
+
 describe("ReviewQueueItemCard", () => {
   beforeEach(() => {
     vi.mocked(api.searchOfficers).mockResolvedValue({ candidates: officerSearchFixtures });
@@ -21,7 +26,7 @@ describe("ReviewQueueItemCard", () => {
 
   it("renders an officer_candidate proposal with its source and confidence", () => {
     const item = reviewQueueFixtures[0]; // officer_candidate, high confidence, tier2 source
-    render(<ReviewQueueItemCard item={item} onApprove={vi.fn()} onReject={vi.fn()} />);
+    renderCard(<ReviewQueueItemCard item={item} onApprove={vi.fn()} onReject={vi.fn()} />);
 
     expect(screen.getByText(/Jordan Michaels/)).toBeInTheDocument();
     expect(screen.getByText(/Riverdale Police Department/)).toBeInTheDocument();
@@ -37,7 +42,7 @@ describe("ReviewQueueItemCard", () => {
 
   it("renders an incident_candidate proposal that is already matched to an officer, with no officer picker required", () => {
     const item = reviewQueueFixtures[1]; // incident_candidate with officerId set
-    render(<ReviewQueueItemCard item={item} onApprove={vi.fn()} onReject={vi.fn()} />);
+    renderCard(<ReviewQueueItemCard item={item} onApprove={vi.fn()} onReject={vi.fn()} />);
 
     expect(screen.getByText(/DA's office declined to prosecute/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Search for the officer/)).not.toBeInTheDocument();
@@ -45,7 +50,7 @@ describe("ReviewQueueItemCard", () => {
 
   it("renders 'No source attached' when source is null", () => {
     const item = reviewQueueFixtures.find((i) => i.source === null)!;
-    render(<ReviewQueueItemCard item={item} onApprove={vi.fn()} onReject={vi.fn()} />);
+    renderCard(<ReviewQueueItemCard item={item} onApprove={vi.fn()} onReject={vi.fn()} />);
     expect(screen.getByText("No source attached.")).toBeInTheDocument();
   });
 
@@ -53,7 +58,7 @@ describe("ReviewQueueItemCard", () => {
     const user = userEvent.setup();
     const item = reviewQueueFixtures[2]; // incident_candidate, officerName only, no officerId
     const onApprove = vi.fn().mockResolvedValue(undefined);
-    render(<ReviewQueueItemCard item={item} onApprove={onApprove} onReject={vi.fn()} />);
+    renderCard(<ReviewQueueItemCard item={item} onApprove={onApprove} onReject={vi.fn()} />);
 
     const search = screen.getByLabelText(/Search for the officer/);
     expect(search).toBeInTheDocument();
@@ -78,7 +83,7 @@ describe("ReviewQueueItemCard", () => {
     const user = userEvent.setup();
     const item = reviewQueueFixtures[0];
     const onApprove = vi.fn().mockResolvedValue(undefined);
-    render(<ReviewQueueItemCard item={item} onApprove={onApprove} onReject={vi.fn()} />);
+    renderCard(<ReviewQueueItemCard item={item} onApprove={onApprove} onReject={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
     expect(onApprove).toHaveBeenCalledWith(item.id, undefined);
@@ -88,7 +93,7 @@ describe("ReviewQueueItemCard", () => {
     const user = userEvent.setup();
     const item = reviewQueueFixtures[0];
     const onReject = vi.fn().mockResolvedValue(undefined);
-    render(<ReviewQueueItemCard item={item} onApprove={vi.fn()} onReject={onReject} />);
+    renderCard(<ReviewQueueItemCard item={item} onApprove={vi.fn()} onReject={onReject} />);
 
     await user.click(screen.getByRole("button", { name: "Reject" }));
     const confirmBtn = screen.getByRole("button", { name: "Confirm reject" });
@@ -106,7 +111,7 @@ describe("ReviewQueueItemCard", () => {
     const user = userEvent.setup();
     const item = reviewQueueFixtures[0];
     const onApprove = vi.fn().mockRejectedValue(new Error("approval failed: department not found"));
-    render(<ReviewQueueItemCard item={item} onApprove={onApprove} onReject={vi.fn()} />);
+    renderCard(<ReviewQueueItemCard item={item} onApprove={onApprove} onReject={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
     expect(await screen.findByText(/approval failed: department not found/)).toBeInTheDocument();
