@@ -3,11 +3,14 @@ import type {
   CreateOfficerRequest,
   CreateRecordResponse,
   EmploymentStatus,
+  InternalOfficerDetail,
   ListPendingPhotosResponse,
+  OfficerDepartmentHistoryEntry,
   OfficerDetail,
   OfficerSearchCandidate,
   PendingPhotoOfficer,
   SearchInternalOfficersResponse,
+  UpdateOfficerRequest,
 } from "@cop/shared-types";
 import { STANDARD_OFFICER_PAGE_DISCLAIMER } from "@cop/shared-types";
 import { pool } from "../db.js";
@@ -410,6 +413,209 @@ officersRouter.post(
           photoConfirmed: updated.photo_confirmed,
         },
       });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/internal/officers/:id
+//
+// The prerequisite for a real officer detail/edit page in the admin app --
+// today the only officer-fetching route is /search (narrow fields for the
+// picker). Deliberately a separate type from the public-facing
+// OfficerDetail (packages/shared-types) -- that type doesn't carry
+// postCertificationId/hireDate at all, which this internal view needs.
+// ---------------------------------------------------------------------------
+officersRouter.get(
+  "/:id",
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    if (!UUID_RE.test(id)) {
+      throw new ApiError(400, "invalid_request", "officer id must be a valid UUID.");
+    }
+
+    const officerResult = await pool.query<{
+      id: string;
+      first_name: string;
+      last_name: string;
+      known_aliases: string[];
+      department_id: string;
+      department_name: string;
+      badge_number: string | null;
+      rank: string | null;
+      hire_date: string | null;
+      employment_status: EmploymentStatus;
+      post_certification_id: string | null;
+      photo_url: string | null;
+      photo_confirmed: boolean;
+      created_at: string;
+    }>(
+      `SELECT o.id, o.first_name, o.last_name, o.known_aliases, o.department_id, d.name AS department_name,
+              o.badge_number, o.rank, o.hire_date, o.employment_status, o.post_certification_id,
+              o.photo_url, o.photo_confirmed, o.created_at
+         FROM officers o
+         JOIN departments d ON d.id = o.department_id
+        WHERE o.id = $1`,
+      [id],
+    );
+    const row = officerResult.rows[0];
+    if (!row) {
+      throw new ApiError(404, "not_found", `No officer with id ${id}.`);
+    }
+
+    const historyResult = await pool.query<{
+      department_id: string;
+      department_name: string;
+      badge_number: string | null;
+      start_date: string;
+      end_date: string | null;
+      separation_reason: string | null;
+    }>(
+      `SELECT h.department_id, d.name AS department_name, h.badge_number, h.start_date, h.end_date, h.separation_reason
+         FROM officer_department_history h
+         JOIN departments d ON d.id = h.department_id
+        WHERE h.officer_id = $1
+        ORDER BY h.start_date DESC`,
+      [id],
+    );
+
+    const countsResult = await pool.query<{ incident_count: string; outcome_count: string }>(
+      `SELECT
+         (SELECT count(*) FROM incident_officers WHERE officer_id = $1) AS incident_count,
+         (SELECT count(*) FROM outcomes ou JOIN incident_officers io ON io.incident_id = ou.incident_id
+           WHERE io.officer_id = $1) AS outcome_count`,
+      [id],
+    );
+
+    const departmentHistory: OfficerDepartmentHistoryEntry[] = historyResult.rows.map((h) => ({
+      departmentId: h.department_id,
+      departmentName: h.department_name,
+      badgeNumber: h.badge_number,
+      startDate: h.start_date,
+      endDate: h.end_date,
+      separationReason: h.separation_reason,
+    }));
+
+    const response: InternalOfficerDetail = {
+      id: row.id,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      knownAliases: row.known_aliases,
+      departmentId: row.department_id,
+      departmentName: row.department_name,
+      badgeNumber: row.badge_number,
+      rank: row.rank,
+      hireDate: row.hire_date,
+      employmentStatus: row.employment_status,
+      postCertificationId: row.post_certification_id,
+      photoUrl: row.photo_url,
+      photoConfirmed: row.photo_confirmed,
+      createdAt: row.created_at,
+      departmentHistory,
+      incidentCount: Number(countsResult.rows[0].incident_count),
+      outcomeCount: Number(countsResult.rows[0].outcome_count),
+    };
+    res.status(200).json(response);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// PATCH /api/internal/officers/:id
+//
+// First officer-edit endpoint in this codebase. departmentId is
+// deliberately NOT editable here -- a department change needs a new
+// officer_department_history row (the separate, not-yet-built "transfer
+// officer" feature), and a direct edit here would silently desync
+// officers.department_id from that history table. Same permission level
+// as officer creation (any authenticated reviewer, no admin gating) --
+// contrast with the future merge feature, which will be admin-only.
+//
+// Uses a dynamic SET clause (only columns actually present in the request
+// body) rather than reviewers.ts's simpler COALESCE-based full UPDATE --
+// COALESCE can't distinguish "field omitted" from "field explicitly set to
+// null," and several of this endpoint's fields (badgeNumber, rank,
+// postCertificationId, photoUrl) need to support being explicitly cleared
+// back to null, which reviewers.ts's two non-nullable fields (role,
+// active) never needed to support.
+// ---------------------------------------------------------------------------
+officersRouter.patch(
+  "/:id",
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const reviewer = req.reviewer!;
+    if (!UUID_RE.test(id)) {
+      throw new ApiError(400, "invalid_request", "officer id must be a valid UUID.");
+    }
+    const body = (req.body ?? {}) as Partial<UpdateOfficerRequest>;
+
+    if ("employmentStatus" in body && !VALID_EMPLOYMENT_STATUSES.includes(body.employmentStatus as EmploymentStatus)) {
+      throw new ApiError(400, "invalid_request", `employmentStatus must be one of ${VALID_EMPLOYMENT_STATUSES.join(", ")}.`);
+    }
+    if ("firstName" in body && !body.firstName?.trim()) {
+      throw new ApiError(400, "invalid_request", "firstName cannot be blank.");
+    }
+    if ("lastName" in body && !body.lastName?.trim()) {
+      throw new ApiError(400, "invalid_request", "lastName cannot be blank.");
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const existing = await client.query<{ id: string; photo_url: string | null }>(
+        `SELECT id, photo_url FROM officers WHERE id = $1 FOR UPDATE`,
+        [id],
+      );
+      if (!existing.rows[0]) {
+        throw new ApiError(404, "not_found", `No officer with id ${id}.`);
+      }
+      const photoUrlChanged = "photoUrl" in body && body.photoUrl !== existing.rows[0].photo_url;
+
+      const fieldMap: Record<string, string> = {
+        firstName: "first_name",
+        lastName: "last_name",
+        knownAliases: "known_aliases",
+        badgeNumber: "badge_number",
+        rank: "rank",
+        employmentStatus: "employment_status",
+        postCertificationId: "post_certification_id",
+        photoUrl: "photo_url",
+      };
+      const setClauses: string[] = [];
+      const values: unknown[] = [];
+      let paramIndex = 1;
+      for (const [key, column] of Object.entries(fieldMap)) {
+        if (key in body) {
+          setClauses.push(`${column} = $${paramIndex}`);
+          values.push((body as Record<string, unknown>)[key]);
+          paramIndex++;
+        }
+      }
+      if (photoUrlChanged) {
+        setClauses.push("photo_confirmed = false", "photo_confirmed_by = NULL", "photo_confirmed_at = NULL");
+      }
+      if (setClauses.length === 0) {
+        throw new ApiError(400, "invalid_request", "No editable fields provided.");
+      }
+
+      values.push(id);
+      await client.query(`UPDATE officers SET ${setClauses.join(", ")} WHERE id = $${paramIndex}`, values);
+
+      await writeRecordRevision(client, {
+        recordType: "officer",
+        recordId: id,
+        changeType: "update",
+        diff: body,
+        changedBy: reviewer.id,
+      });
+
+      await client.query("COMMIT");
+      res.status(200).json({ ok: true });
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

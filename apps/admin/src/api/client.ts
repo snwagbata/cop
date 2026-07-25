@@ -37,7 +37,9 @@ import type {
   ResolveDisputeRequest,
   ReviewQueueItem,
   ReviewQueueStatus,
+  InternalOfficerDetail,
   SearchInternalOfficersResponse,
+  UpdateOfficerRequest,
   UpdateReviewerRequest,
 } from "@cop/shared-types";
 
@@ -271,6 +273,17 @@ export function createReviewer(payload: CreateReviewerRequest): Promise<Reviewer
 
 export function updateReviewer(id: string, payload: UpdateReviewerRequest): Promise<Reviewer> {
   return request<Reviewer>(`/api/internal/reviewers/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: payload,
+  });
+}
+
+export function fetchOfficerDetail(id: string): Promise<InternalOfficerDetail> {
+  return request<InternalOfficerDetail>(`/api/internal/officers/${encodeURIComponent(id)}`);
+}
+
+export function updateOfficer(id: string, payload: UpdateOfficerRequest): Promise<{ ok: true }> {
+  return request<{ ok: true }>(`/api/internal/officers/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: payload,
   });
