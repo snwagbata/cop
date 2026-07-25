@@ -281,10 +281,12 @@ feature), not routine edits.
 - **`apps/admin/src/pages/OfficerDetailPage.tsx`** (new), route
   `/officers/:id`. Fetches `GET /api/internal/officers/:id`, renders every
   `InternalOfficerDetail` field read-only by default, plus the department
-  history list and incident/outcome counts (each count links to the
-  existing audit-log/review-queue views filtered to that officer, rather
-  than duplicating incident detail rendering here — YAGNI: those views
-  already exist).
+  history list and incident/outcome counts as plain numbers. **Not
+  links** — checked first: neither `AuditLogPage`/`fetchRecordRevisions`
+  nor the review-queue endpoints support filtering by officer id today, so
+  a "click to see this officer's incidents" link would have nowhere real
+  to go. Building that filter is separate, unscoped work; plain counts are
+  honest about what exists today.
 - **Edit mode**: a toggle on the same page (not a separate route) reusing
   the same field set/validation as `NewOfficerForm.tsx`'s create form,
   submitting via `PATCH`. `departmentId` is rendered read-only with a note
