@@ -33,10 +33,18 @@ const OFFICER_BATCH_SIZE = 200;
 /** Normalized shape this client produces -- the only thing run.ts depends
  * on. */
 export interface NycCcrbAllegation {
-  /** Together with complaintOfficerNumber, this pipeline's dedup key
-   * (INGESTION_DESIGN.md §2's external_ref). */
+  /** Together with allegationRecordIdentity, this pipeline's dedup key
+   * (INGESTION_DESIGN.md §2's external_ref). A single complaint+officer
+   * pair can have multiple distinct allegation rows (e.g. both "Force"
+   * and "Abuse of Authority" against the same officer on the same
+   * complaint) -- complaintOfficerNumber alone is NOT unique per
+   * allegation, hence allegationRecordIdentity below. */
   complaintId: string;
   complaintOfficerNumber: string;
+  /** Uniquely identifies one allegation row within a complaint+officer
+   * pair (Socrata's `allegation_record_identity`). Required, not
+   * optional -- see normalizeAllegation's guard. */
+  allegationRecordIdentity: string;
   fadoType: string;
   allegation: string;
   ccrbDisposition: string | null;
@@ -49,6 +57,7 @@ export interface NycCcrbAllegation {
 interface RawAllegationRow {
   complaint_id?: string;
   complaint_officer_number?: string;
+  allegation_record_identity?: string;
   tax_id?: string;
   fado_type?: string;
   allegation?: string;
@@ -158,7 +167,7 @@ async function fetchOfficersByTaxId(taxIds: string[], appToken?: string): Promis
 }
 
 function normalizeAllegation(raw: RawAllegationRow, officersByTaxId: Map<string, RawOfficerRow>): NycCcrbAllegation | null {
-  if (!raw.complaint_id || !raw.complaint_officer_number) {
+  if (!raw.complaint_id || !raw.complaint_officer_number || !raw.allegation_record_identity) {
     // No stable composite id -- can't dedupe this row. Skip rather than
     // throw, same defensive-parsing convention as courtlistener/client.ts.
     return null;
@@ -169,6 +178,7 @@ function normalizeAllegation(raw: RawAllegationRow, officersByTaxId: Map<string,
   return {
     complaintId: raw.complaint_id,
     complaintOfficerNumber: raw.complaint_officer_number,
+    allegationRecordIdentity: raw.allegation_record_identity,
     fadoType: raw.fado_type ?? "Unknown",
     allegation: raw.allegation ?? "Unknown",
     ccrbDisposition: raw.ccrb_allegation_disposition ?? null,

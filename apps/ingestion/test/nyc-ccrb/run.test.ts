@@ -12,6 +12,7 @@ function allegation(overrides: Partial<NycCcrbAllegation> = {}): NycCcrbAllegati
   return {
     complaintId: "201806447",
     complaintOfficerNumber: "1",
+    allegationRecordIdentity: "240280",
     fadoType: "Force",
     allegation: "Physical force",
     ccrbDisposition: "Substantiated (Charges)",
@@ -64,19 +65,19 @@ describe("runNycCcrbPipeline", () => {
     expect(fetchNycCcrbAllegations).toHaveBeenCalledWith({ appToken: undefined });
 
     const sourceRows = await pool.query(
-      `SELECT source_type, reliability_tier, external_ref FROM sources WHERE external_ref = '201806447:1'`,
+      `SELECT source_type, reliability_tier, external_ref FROM sources WHERE external_ref = '201806447:240280'`,
     );
     expect(sourceRows.rows).toHaveLength(1);
     expect(sourceRows.rows[0]).toMatchObject({
       source_type: "official_dataset",
       reliability_tier: "tier2_official_dataset",
-      external_ref: "201806447:1",
+      external_ref: "201806447:240280",
     });
 
     const reviewQueueRows = await pool.query(
       `SELECT rq.proposed_record, rq.match_confidence, rq.status
          FROM review_queue rq JOIN sources s ON s.id = rq.source_id
-        WHERE s.external_ref = '201806447:1'`,
+        WHERE s.external_ref = '201806447:240280'`,
     );
     expect(reviewQueueRows.rows).toHaveLength(1);
     expect(reviewQueueRows.rows[0].status).toBe("pending");
@@ -107,7 +108,7 @@ describe("runNycCcrbPipeline", () => {
 
     const priorSource = await pool.query<{ id: string }>(
       `INSERT INTO sources (source_type, reliability_tier, external_ref)
-       VALUES ('official_dataset', 'tier2_official_dataset', '201806447:1')
+       VALUES ('official_dataset', 'tier2_official_dataset', '201806447:240280')
        RETURNING id`,
     );
     await pool.query(
@@ -128,11 +129,42 @@ describe("runNycCcrbPipeline", () => {
 
     await runNycCcrbPipeline(pool, ENV, { fetchNycCcrbAllegations });
 
-    const sourceRows = await pool.query(`SELECT id FROM sources WHERE external_ref = '201806447:1'`);
+    const sourceRows = await pool.query(`SELECT id FROM sources WHERE external_ref = '201806447:240280'`);
     expect(sourceRows.rows).toHaveLength(1); // still just the one from setup
 
     const runRows = await pool.query(`SELECT items_fetched, items_queued, items_deduped FROM ingestion_runs`);
     expect(runRows.rows[0]).toMatchObject({ items_fetched: 1, items_queued: 0, items_deduped: 1 });
+  });
+
+  it("queues two allegations sharing the same complaint_id and complaint_officer_number but different allegationRecordIdentity as separate review_queue candidates, not deduped against each other", async () => {
+    // End-to-end regression test for the dedup-key bug: complaint_id +
+    // complaint_officer_number alone is NOT unique -- a single
+    // complaint+officer pair can have multiple distinct allegation rows
+    // (e.g. "Force" and "Abuse of Authority" against the same officer on
+    // the same complaint). Both must reach review_queue, not just the
+    // first.
+    await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
+
+    const fetchNycCcrbAllegations = vi.fn().mockResolvedValue([
+      allegation({ allegationRecordIdentity: "240282", fadoType: "Force", allegation: "Physical force" }),
+      allegation({ allegationRecordIdentity: "240281", fadoType: "Abuse of Authority", allegation: "Failure to provide RTKA card" }),
+    ]);
+
+    await runNycCcrbPipeline(pool, ENV, { fetchNycCcrbAllegations });
+
+    const sourceRows = await pool.query(
+      `SELECT external_ref FROM sources WHERE external_ref IN ('201806447:240282', '201806447:240281')`,
+    );
+    expect(sourceRows.rows).toHaveLength(2);
+
+    const reviewQueueRows = await pool.query(
+      `SELECT rq.id FROM review_queue rq JOIN sources s ON s.id = rq.source_id
+        WHERE s.external_ref IN ('201806447:240282', '201806447:240281')`,
+    );
+    expect(reviewQueueRows.rows).toHaveLength(2);
+
+    const runRows = await pool.query(`SELECT items_fetched, items_queued, items_deduped FROM ingestion_runs`);
+    expect(runRows.rows[0]).toMatchObject({ items_fetched: 2, items_queued: 2, items_deduped: 0 });
   });
 
   it("queues a low-confidence candidate with a note when no shield number is on file", async () => {
@@ -145,7 +177,7 @@ describe("runNycCcrbPipeline", () => {
     const reviewQueueRows = await pool.query(
       `SELECT rq.proposed_record, rq.match_confidence
          FROM review_queue rq JOIN sources s ON s.id = rq.source_id
-        WHERE s.external_ref = '201806447:1'`,
+        WHERE s.external_ref = '201806447:240280'`,
     );
     expect(reviewQueueRows.rows).toHaveLength(1);
     expect(reviewQueueRows.rows[0].match_confidence).toBe("low"); // no officers table row exists to match against
@@ -162,7 +194,7 @@ describe("runNycCcrbPipeline", () => {
     await runNycCcrbPipeline(pool, ENV, { fetchNycCcrbAllegations });
 
     const reviewQueueRows = await pool.query(
-      `SELECT rq.proposed_record FROM review_queue rq JOIN sources s ON s.id = rq.source_id WHERE s.external_ref = '201806447:1'`,
+      `SELECT rq.proposed_record FROM review_queue rq JOIN sources s ON s.id = rq.source_id WHERE s.external_ref = '201806447:240280'`,
     );
     expect(reviewQueueRows.rows[0].proposed_record.note).toMatch(/did not return an officer name/i);
     expect(reviewQueueRows.rows[0].proposed_record.officerName).toBeUndefined();

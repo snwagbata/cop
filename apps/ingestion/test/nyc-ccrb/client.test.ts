@@ -30,6 +30,7 @@ describe("fetchNycCcrbAllegations", () => {
           {
             complaint_id: "201806447",
             complaint_officer_number: "1",
+            allegation_record_identity: "240280",
             tax_id: "942643",
             fado_type: "Force",
             allegation: "Physical force",
@@ -56,6 +57,7 @@ describe("fetchNycCcrbAllegations", () => {
       {
         complaintId: "201806447",
         complaintOfficerNumber: "1",
+        allegationRecordIdentity: "240280",
         fadoType: "Force",
         allegation: "Physical force",
         ccrbDisposition: "Substantiated (Charges)",
@@ -77,10 +79,19 @@ describe("fetchNycCcrbAllegations", () => {
     const fullPage = Array.from({ length: 1000 }, (_, i) => ({
       complaint_id: String(i),
       complaint_officer_number: "1",
+      allegation_record_identity: String(100000 + i),
       fado_type: "Discourtesy",
       allegation: "Action",
     }));
-    const shortPage = [{ complaint_id: "1000", complaint_officer_number: "1", fado_type: "Discourtesy", allegation: "Action" }];
+    const shortPage = [
+      {
+        complaint_id: "1000",
+        complaint_officer_number: "1",
+        allegation_record_identity: "101000",
+        fado_type: "Discourtesy",
+        allegation: "Action",
+      },
+    ];
 
     let allegationCallCount = 0;
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
@@ -110,13 +121,25 @@ describe("fetchNycCcrbAllegations", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1); // only the allegations call, no officer join call
   });
 
-  it("skips an allegation row missing complaint_id or complaint_officer_number rather than throwing", async () => {
+  it("skips an allegation row missing complaint_id, complaint_officer_number, or allegation_record_identity rather than throwing", async () => {
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("6xgr-kwjq")) {
         return jsonResponse([
-          { complaint_officer_number: "1", fado_type: "Force", allegation: "No complaint id" },
-          { complaint_id: "5", fado_type: "Force", allegation: "No officer number" },
-          { complaint_id: "6", complaint_officer_number: "1", fado_type: "Force", allegation: "Has both" },
+          {
+            complaint_officer_number: "1",
+            allegation_record_identity: "240280",
+            fado_type: "Force",
+            allegation: "No complaint id",
+          },
+          { complaint_id: "5", allegation_record_identity: "240281", fado_type: "Force", allegation: "No officer number" },
+          { complaint_id: "7", complaint_officer_number: "1", fado_type: "Force", allegation: "No allegation record identity" },
+          {
+            complaint_id: "6",
+            complaint_officer_number: "1",
+            allegation_record_identity: "240282",
+            fado_type: "Force",
+            allegation: "Has all three",
+          },
         ]);
       }
       return jsonResponse([]);
@@ -127,6 +150,55 @@ describe("fetchNycCcrbAllegations", () => {
 
     expect(allegations).toHaveLength(1);
     expect(allegations[0].complaintId).toBe("6");
+  });
+
+  it("normalizes multiple allegation rows sharing the same complaint_id and complaint_officer_number but different allegation_record_identity as distinct, non-duplicate allegations", async () => {
+    // Regression test: complaint_id + complaint_officer_number alone is
+    // NOT a unique key -- a single complaint+officer pair can have
+    // multiple distinct allegation rows (e.g. "Force" and "Abuse of
+    // Authority" against the same officer on the same complaint).
+    // Live-verified against the real API: complaint_id=200000003,
+    // complaint_officer_number=1 returns 3 rows with distinct
+    // allegation_record_identity values (240282, 240281, 240280).
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("6xgr-kwjq")) {
+        return jsonResponse([
+          {
+            complaint_id: "200000003",
+            complaint_officer_number: "1",
+            allegation_record_identity: "240282",
+            fado_type: "Force",
+            allegation: "Physical force",
+          },
+          {
+            complaint_id: "200000003",
+            complaint_officer_number: "1",
+            allegation_record_identity: "240281",
+            fado_type: "Abuse of Authority",
+            allegation: "Failure to provide RTKA card",
+          },
+          {
+            complaint_id: "200000003",
+            complaint_officer_number: "1",
+            allegation_record_identity: "240280",
+            fado_type: "Discourtesy",
+            allegation: "Word",
+          },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const allegations = await fetchNycCcrbAllegations();
+
+    expect(allegations).toHaveLength(3);
+    const identities = allegations.map((a) => a.allegationRecordIdentity).sort();
+    expect(identities).toEqual(["240280", "240281", "240282"]);
+    for (const a of allegations) {
+      expect(a.complaintId).toBe("200000003");
+      expect(a.complaintOfficerNumber).toBe("1");
+    }
   });
 
   it("sends the X-App-Token header when an app token is provided, and omits it when not", async () => {

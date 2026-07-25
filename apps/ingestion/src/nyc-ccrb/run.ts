@@ -91,7 +91,7 @@ async function runOneConfigRow(
     itemsFetched = allegations.length;
 
     for (const allegation of allegations) {
-      const externalRef = `${allegation.complaintId}:${allegation.complaintOfficerNumber}`;
+      const externalRef = `${allegation.complaintId}:${allegation.allegationRecordIdentity}`;
       const alreadyQueued = await hasBeenQueued(pool, "official_dataset", externalRef);
       if (alreadyQueued) {
         itemsDeduped++;
