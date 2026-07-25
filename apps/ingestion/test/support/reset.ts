@@ -7,7 +7,10 @@ import { SUPERUSER_URL } from "./connections.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // apps/ingestion/test/support/reset.ts -> repo root is four levels up.
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
-const SEED_SQL_PATH = path.join(REPO_ROOT, "db", "seed", "0001_synthetic_sample_data.sql");
+const SEED_SQL_PATHS = [
+  path.join(REPO_ROOT, "db", "seed", "0001_synthetic_sample_data.sql"),
+  path.join(REPO_ROOT, "db", "seed", "0002_nyc_pilot_department.sql"),
+];
 
 // Same table list as packages/ingestion-lib/src/support/reset.ts, but this
 // suite's own database (cop_test_courtlistener) is fully isolated -- no
@@ -35,7 +38,7 @@ const ALL_TABLES = [
 let cachedSeedSql: string | null = null;
 function loadSeedSql(): string {
   if (cachedSeedSql === null) {
-    cachedSeedSql = readFileSync(SEED_SQL_PATH, "utf8");
+    cachedSeedSql = SEED_SQL_PATHS.map((p) => readFileSync(p, "utf8")).join("\n");
   }
   return cachedSeedSql;
 }
