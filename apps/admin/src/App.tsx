@@ -11,6 +11,7 @@ import { AuditLogPage } from "./pages/AuditLogPage";
 import { IngestionRunsPage } from "./pages/IngestionRunsPage";
 import { ReviewersPage } from "./pages/ReviewersPage";
 import { PhotoReviewPage } from "./pages/PhotoReviewPage";
+import { OfficerDetailPage } from "./pages/OfficerDetailPage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -90,6 +91,14 @@ function AppRoutes() {
         element={
           <RequireAuth>
             <IngestionRunsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/officers/:id"
+        element={
+          <RequireAuth>
+            <OfficerDetailPage />
           </RequireAuth>
         }
       />
