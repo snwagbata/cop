@@ -127,8 +127,13 @@ quietly breaking it:
 
 BEGIN;
 
-INSERT INTO departments (name, state, jurisdiction_type, contact_info, records_request_portal_url) VALUES
-    ('New York City Police Department', 'NY', 'municipal', NULL, 'https://a860-openrecords.nyc.gov/');
+-- Fixed UUID, matching 0001_synthetic_sample_data.sql's convention (its
+-- departments use ...0001/...0002) -- the next one in that same sequence,
+-- so tests can assert against a known id the same way SEED.departments.*
+-- already does for the fictional departments.
+INSERT INTO departments (id, name, state, jurisdiction_type, contact_info, records_request_portal_url) VALUES
+    ('00000000-0000-0000-0000-000000000003', 'New York City Police Department', 'NY', 'municipal', NULL,
+        'https://a860-openrecords.nyc.gov/');
 
 COMMIT;
 ```
