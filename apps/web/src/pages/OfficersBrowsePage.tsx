@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router";
 import type { ListOfficersResponse } from "@cop/shared-types";
 import { ApiError, listOfficers } from "../lib/apiClient";
 import { PhotoOrPlaceholder } from "../components/PhotoOrPlaceholder";

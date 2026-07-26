@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { OfficerDetailPage } from "../OfficerDetailPage";
 import { officerDetailFixture, officerDetailEmptyHistoryFixture } from "../../fixtures/officers";
 import { STANDARD_OFFICER_PAGE_DISCLAIMER } from "@cop/shared-types";

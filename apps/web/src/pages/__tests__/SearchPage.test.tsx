@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useParams } from "react-router";
 import { SearchPage } from "../SearchPage";
 import { officerSearchFixtures, singleOfficerCandidateFixture } from "../../fixtures/officers";
 import * as api from "../../lib/apiClient";

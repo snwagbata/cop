@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import type { Incident, ResolvedDisputeSummary } from "@cop/shared-types";
 import { Badge } from "./Badge";
 import { CitationList } from "./CitationList";

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { DashboardPage } from "../DashboardPage";
 import { digestFixture } from "../../fixtures/digest";
 import * as api from "../../api/client";

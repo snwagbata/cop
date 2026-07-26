@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import type { Department } from "@cop/shared-types";
 import { ApiError, listDepartments } from "../lib/apiClient";
 import { Breadcrumbs } from "../components/Breadcrumbs";

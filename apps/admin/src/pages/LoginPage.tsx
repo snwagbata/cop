@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router";
 import { useAuth } from "../context/AuthContext";
 import { ErrorBanner } from "../components/ErrorBanner";
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import type { OfficerSearchCandidate } from "@cop/shared-types";
 import { ApiError, searchOfficers } from "../lib/apiClient";
 import { CandidateCard } from "../components/CandidateCard";

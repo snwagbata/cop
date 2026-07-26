@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import type { Department, DepartmentStats } from "@cop/shared-types";
 import { ApiError, getDepartmentStats } from "../lib/apiClient";
 import { formatCentsAsCurrency, formatDate } from "../lib/format";

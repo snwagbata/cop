@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import type { DisputeStatusResponse } from "@cop/shared-types";
 import { ApiError, getDisputeStatus } from "../lib/apiClient";
 import { formatDate, label } from "../lib/format";
