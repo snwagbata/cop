@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router";
 import type { DisputeRequesterRole } from "@cop/shared-types";
 import { ApiError, submitDispute } from "../lib/apiClient";
 import { Breadcrumbs } from "../components/Breadcrumbs";

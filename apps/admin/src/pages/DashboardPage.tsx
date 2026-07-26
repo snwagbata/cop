@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import type { ReviewDigest } from "@cop/shared-types";
 import * as api from "../api/client";
 import { useAuth } from "../context/AuthContext";

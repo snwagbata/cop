@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import type { IngestionRun } from "@cop/shared-types";
 import { IngestionRunsPage } from "../IngestionRunsPage";
 import * as api from "../../api/client";

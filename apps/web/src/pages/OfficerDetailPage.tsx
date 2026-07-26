@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import type { OfficerDetail } from "@cop/shared-types";
 import { ApiError, getOfficer } from "../lib/apiClient";
 import { DisclaimerBlock } from "../components/DisclaimerBlock";

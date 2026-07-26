@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { NavLink, type NavLinkRenderProps } from "react-router-dom";
+import { NavLink, type NavLinkRenderProps } from "react-router";
 import { useAuth } from "../context/AuthContext";
 
 function navLinkClassName({ isActive }: NavLinkRenderProps): string {
