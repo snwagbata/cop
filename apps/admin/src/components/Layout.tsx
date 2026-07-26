@@ -1,6 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, type NavLinkRenderProps } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+
+function navLinkClassName({ isActive }: NavLinkRenderProps): string {
+  return isActive ? "active" : "";
+}
 
 export function Layout({ children }: { children: ReactNode }) {
   const { reviewer, logout } = useAuth();
@@ -31,32 +35,32 @@ export function Layout({ children }: { children: ReactNode }) {
             id="primary-nav"
             onClick={() => setMobileMenuOpen(false)}
           >
-            <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
+            <NavLink to="/" end className={navLinkClassName}>
               Dashboard
             </NavLink>
-            <NavLink to="/review-queue" className={({ isActive }) => (isActive ? "active" : "")}>
+            <NavLink to="/review-queue" className={navLinkClassName}>
               Review Queue
             </NavLink>
-            <NavLink to="/disputes" className={({ isActive }) => (isActive ? "active" : "")}>
+            <NavLink to="/disputes" className={navLinkClassName}>
               Disputes
             </NavLink>
-            <NavLink to="/new-record" className={({ isActive }) => (isActive ? "active" : "")}>
+            <NavLink to="/new-record" className={navLinkClassName}>
               New Record
             </NavLink>
-            <NavLink to="/audit-log" className={({ isActive }) => (isActive ? "active" : "")}>
+            <NavLink to="/audit-log" className={navLinkClassName}>
               Audit Log
             </NavLink>
-            <NavLink to="/photo-review" className={({ isActive }) => (isActive ? "active" : "")}>
+            <NavLink to="/photo-review" className={navLinkClassName}>
               Photo Review
             </NavLink>
-            <NavLink to="/officers" className={({ isActive }) => (isActive ? "active" : "")}>
+            <NavLink to="/officers" className={navLinkClassName}>
               Officers
             </NavLink>
-            <NavLink to="/ingestion-runs" className={({ isActive }) => (isActive ? "active" : "")}>
+            <NavLink to="/ingestion-runs" className={navLinkClassName}>
               Ingestion Runs
             </NavLink>
             {isAdmin && (
-              <NavLink to="/reviewers" className={({ isActive }) => (isActive ? "active" : "")}>
+              <NavLink to="/reviewers" className={navLinkClassName}>
                 Reviewers
               </NavLink>
             )}
