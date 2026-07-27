@@ -37,6 +37,14 @@ const MAX_PAGES = 10;
  * query-string length is comfortably fine at this batch size for either. */
 const BATCH_SIZE = 200;
 
+/** Hard cap on pagination for fetchAllNycCcrbOfficers's full-dataset fetch
+ * (unlike the tax_id-scoped join above, this fetches every row in
+ * 2fir-qns4, not just ones referenced by recently-fetched allegations).
+ * Live-verified total row count: 97,551 (2026-07-27, `$select=count(tax_id)`)
+ * -- 150 pages * 1,000 = 150,000 gives comfortable headroom for roster
+ * growth before this cap could ever bind. */
+const OFFICERS_FULL_FETCH_MAX_PAGES = 150;
+
 /** Normalized shape this client produces -- the only thing run.ts depends
  * on. */
 export interface NycCcrbAllegation {
@@ -59,6 +67,23 @@ export interface NycCcrbAllegation {
   officerFirstName: string | null;
   officerLastName: string | null;
   shieldNo: string | null;
+  /** CCRB's own stable per-officer id, straight through from the
+   * Allegations row's tax_id (not looked up via the Officers join --
+   * available even when the Officers-dataset join below found nothing).
+   * The weekly pipeline's officer-resolution key (run.ts) and the bulk
+   * importer's dedup key (backfillOfficers.ts) both key on this,
+   * namespaced as "nyc_ccrb:<taxId>". Null only when the Allegations row
+   * itself had no tax_id on file. */
+  taxId: string | null;
+  /** From the Officers-dataset join's current_rank field (e.g.
+   * "Sergeant") -- null if the join found nothing or the field was
+   * absent. */
+  officerRank: string | null;
+  /** From the Officers-dataset join's active_per_last_reported_status
+   * field: true for "Yes", false for anything else present, null if the
+   * join found nothing or the field itself was absent (distinct from
+   * false -- "known inactive" vs "unknown"). */
+  officerActive: boolean | null;
   /** From the Complaints join -- null if that complaint had no
    * incident_date on file (rare; run.ts surfaces a note when this
    * happens, since a date is required for review-queue approval). */
@@ -86,6 +111,8 @@ interface RawOfficerRow {
   officer_first_name?: string;
   officer_last_name?: string;
   shield_no?: string;
+  current_rank?: string;
+  active_per_last_reported_status?: string;
 }
 
 function requestHeaders(appToken?: string): Record<string, string> {
@@ -246,6 +273,83 @@ function normalizeAllegation(
     officerFirstName: officer?.officer_first_name ?? null,
     officerLastName: officer?.officer_last_name ?? null,
     shieldNo: officer?.shield_no ?? null,
+    taxId: raw.tax_id ?? null,
+    officerRank: officer?.current_rank ?? null,
+    officerActive: officer?.active_per_last_reported_status === undefined
+      ? null
+      : officer.active_per_last_reported_status === "Yes",
     incidentDate: incidentDateByComplaintId.get(raw.complaint_id) ?? null,
   };
+}
+
+/** One row of NYC CCRB's full Officers reference dataset (2fir-qns4) --
+ * the shape apps/ingestion/src/nyc-ccrb/backfillOfficers.ts bulk-imports
+ * from, and the same shape run.ts's rare create-on-miss path derives from
+ * a single allegation's join fields. */
+export interface NycCcrbOfficerRosterEntry {
+  taxId: string;
+  firstName: string;
+  lastName: string;
+  badgeNumber: string | null;
+  rank: string | null;
+  /** true for "Yes", false for anything else present or absent -- unlike
+   * NycCcrbAllegation.officerActive, this is never null: every row in the
+   * full Officers dataset either has this field or doesn't, and "unknown"
+   * isn't a useful distinction for a bulk-import default (design doc §2:
+   * "'No'/missing -> 'inactive'"). */
+  active: boolean;
+}
+
+function normalizeOfficerRosterEntry(raw: RawOfficerRow): NycCcrbOfficerRosterEntry | null {
+  if (!raw.tax_id || !raw.officer_first_name || !raw.officer_last_name) {
+    // No stable id or no name -- nothing usable to create an officer from.
+    // Skip rather than throw, same defensive-parsing convention as
+    // normalizeAllegation above.
+    return null;
+  }
+  return {
+    taxId: raw.tax_id,
+    firstName: raw.officer_first_name,
+    lastName: raw.officer_last_name,
+    badgeNumber: raw.shield_no ?? null,
+    rank: raw.current_rank ?? null,
+    active: raw.active_per_last_reported_status === "Yes",
+  };
+}
+
+/**
+ * Fetches NYC CCRB's *entire* Officers reference dataset (2fir-qns4) --
+ * every officer CCRB has ever tracked, not scoped to any recent window or
+ * tax_id list (unlike fetchNycCcrbAllegations's join, which only looks up
+ * tax_ids referenced by recently-fetched allegations). Backs the one-time
+ * bulk-import script (backfillOfficers.ts) that seeds a department's
+ * initial officer roster. Paginates until a short page or
+ * OFFICERS_FULL_FETCH_MAX_PAGES, same shape as fetchClosedComplaints's own
+ * pagination loop.
+ */
+export async function fetchAllNycCcrbOfficers(
+  options: { appToken?: string } = {},
+): Promise<NycCcrbOfficerRosterEntry[]> {
+  const results: NycCcrbOfficerRosterEntry[] = [];
+
+  for (let page = 0; page < OFFICERS_FULL_FETCH_MAX_PAGES; page++) {
+    const params = new URLSearchParams();
+    params.set("$limit", String(PAGE_SIZE));
+    params.set("$offset", String(page * PAGE_SIZE));
+    const url = `${BASE_URL}/${OFFICERS_DATASET}.json?${params.toString()}`;
+
+    const rows = await fetchSocrataJson<RawOfficerRow[]>(url, options.appToken);
+    for (const raw of rows) {
+      const normalized = normalizeOfficerRosterEntry(raw);
+      if (normalized !== null) {
+        results.push(normalized);
+      }
+    }
+
+    if (rows.length < PAGE_SIZE) {
+      break;
+    }
+  }
+
+  return results;
 }
