@@ -13,6 +13,8 @@
     "ingest:courtlistener:built": "node dist/src/index.js courtlistener",
     "ingest:nyc-ccrb": "tsx src/index.ts nyc_ccrb",
     "ingest:nyc-ccrb:built": "node dist/src/index.js nyc_ccrb",
+    "backfill:nyc-ccrb-officers": "tsx src/index.ts nyc_ccrb_backfill_officers",
+    "backfill:nyc-ccrb-officers:built": "node dist/src/index.js nyc_ccrb_backfill_officers",
     "test": "vitest run"
   },
   "dependencies": {

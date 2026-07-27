@@ -38,7 +38,7 @@ export interface NycCcrbRunDeps {
 
 const defaultDeps: NycCcrbRunDeps = { fetchNycCcrbAllegations };
 
-function isNycCcrbConfig(value: unknown): value is NycCcrbRunConfig {
+export function isNycCcrbConfig(value: unknown): value is NycCcrbRunConfig {
   if (typeof value !== "object" || value === null) {
     return false;
   }

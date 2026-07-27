@@ -1,6 +1,7 @@
 import pg from "pg";
 import { runCourtListenerPipeline } from "./courtlistener/run.js";
 import { runNycCcrbPipeline } from "./nyc-ccrb/run.js";
+import { runNycCcrbOfficerBulkImport } from "./nyc-ccrb/backfillOfficers.js";
 
 const { Pool } = pg;
 
@@ -59,7 +60,20 @@ async function main(): Promise<void> {
     return;
   }
 
-  throw new Error(`Unknown pipeline: "${pipeline}". Known pipelines: courtlistener, nyc_ccrb.`);
+  if (pipeline === "nyc_ccrb_backfill_officers") {
+    const pool = new Pool({ connectionString: databaseUrl });
+    try {
+      const results = await runNycCcrbOfficerBulkImport(pool, { socrataAppToken: process.env.SOCRATA_APP_TOKEN });
+      for (const r of results) {
+        console.log(`${r.departmentName}: fetched ${r.totalFetched}, imported ${r.totalImported} new officers.`);
+      }
+    } finally {
+      await pool.end();
+    }
+    return;
+  }
+
+  throw new Error(`Unknown pipeline: "${pipeline}". Known pipelines: courtlistener, nyc_ccrb, nyc_ccrb_backfill_officers.`);
 }
 
 main().catch((err) => {
