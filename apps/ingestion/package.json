@@ -15,6 +15,8 @@
     "ingest:nyc-ccrb:built": "node dist/src/index.js nyc_ccrb",
     "backfill:nyc-ccrb-officers": "tsx src/index.ts nyc_ccrb_backfill_officers",
     "backfill:nyc-ccrb-officers:built": "node dist/src/index.js nyc_ccrb_backfill_officers",
+    "backfill:nyc-ccrb-review-queue": "tsx src/index.ts nyc_ccrb_backfill_review_queue",
+    "backfill:nyc-ccrb-review-queue:built": "node dist/src/index.js nyc_ccrb_backfill_review_queue",
     "test": "vitest run"
   },
   "dependencies": {
