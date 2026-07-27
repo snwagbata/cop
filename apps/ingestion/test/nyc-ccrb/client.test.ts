@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchNycCcrbAllegations } from "../../src/nyc-ccrb/client.js";
+import { fetchNycCcrbAllegations, fetchAllNycCcrbOfficers } from "../../src/nyc-ccrb/client.js";
 
 /**
  * Mocked-HTTP tests for the NYC CCRB Socrata client. Every query pattern
@@ -71,6 +71,9 @@ describe("fetchNycCcrbAllegations", () => {
         officerFirstName: "Alfred",
         officerLastName: "Hernandez",
         shieldNo: "05046",
+        taxId: "942643",
+        officerRank: null,
+        officerActive: null,
         incidentDate: "2018-01-05",
       },
     ]);
@@ -225,6 +228,84 @@ describe("fetchNycCcrbAllegations", () => {
     expect(allegations[0].incidentDate).toBeNull();
   });
 
+  it("maps officerRank and officerActive from the Officers-dataset join, and taxId straight from the Allegations row", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("2mby-ccnw")) {
+        return jsonResponse([{ complaint_id: "6", incident_date: "2020-01-01" }]);
+      }
+      if (url.includes("6xgr-kwjq")) {
+        return jsonResponse([
+          {
+            complaint_id: "6",
+            complaint_officer_number: "1",
+            allegation_record_identity: "240282",
+            tax_id: "555555",
+            fado_type: "Force",
+            allegation: "x",
+          },
+        ]);
+      }
+      return jsonResponse([
+        {
+          tax_id: "555555",
+          officer_first_name: "Pat",
+          officer_last_name: "Rivera",
+          shield_no: "1000",
+          current_rank: "Sergeant",
+          active_per_last_reported_status: "Yes",
+        },
+      ]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const allegations = await fetchNycCcrbAllegations();
+
+    expect(allegations).toHaveLength(1);
+    expect(allegations[0].taxId).toBe("555555");
+    expect(allegations[0].officerRank).toBe("Sergeant");
+    expect(allegations[0].officerActive).toBe(true);
+  });
+
+  it("maps officerActive to false when active_per_last_reported_status is present but not \"Yes\"", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("2mby-ccnw")) {
+        return jsonResponse([{ complaint_id: "6", incident_date: "2020-01-01" }]);
+      }
+      if (url.includes("6xgr-kwjq")) {
+        return jsonResponse([
+          { complaint_id: "6", complaint_officer_number: "1", allegation_record_identity: "240282", tax_id: "555555", fado_type: "Force", allegation: "x" },
+        ]);
+      }
+      return jsonResponse([
+        { tax_id: "555555", officer_first_name: "Pat", officer_last_name: "Rivera", active_per_last_reported_status: "No" },
+      ]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const allegations = await fetchNycCcrbAllegations();
+    expect(allegations[0].officerActive).toBe(false);
+  });
+
+  it("sets taxId to null when the Allegations row itself has no tax_id", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("2mby-ccnw")) {
+        return jsonResponse([{ complaint_id: "6", incident_date: "2020-01-01" }]);
+      }
+      if (url.includes("6xgr-kwjq")) {
+        return jsonResponse([
+          { complaint_id: "6", complaint_officer_number: "1", allegation_record_identity: "240282", fado_type: "Force", allegation: "x" },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const allegations = await fetchNycCcrbAllegations();
+    expect(allegations[0].taxId).toBeNull();
+    expect(allegations[0].officerRank).toBeNull();
+    expect(allegations[0].officerActive).toBeNull();
+  });
+
   it("sends the X-App-Token header on every request when an app token is provided, and omits it when not", async () => {
     const fetchMock = vi.fn().mockImplementation(() => jsonResponse([]));
     vi.stubGlobal("fetch", fetchMock);
@@ -258,5 +339,72 @@ describe("fetchNycCcrbAllegations", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(fetchNycCcrbAllegations()).rejects.toThrow(/not valid JSON/i);
+  });
+});
+
+describe("fetchAllNycCcrbOfficers", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fetches and normalizes every row, mapping active_per_last_reported_status to a boolean", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse([
+        { tax_id: "1", officer_first_name: "Chris", officer_last_name: "Dengel", shield_no: "01717", current_rank: "Sergeant", active_per_last_reported_status: "No" },
+        { tax_id: "2", officer_first_name: "Nabil", officer_last_name: "Laafar", shield_no: "15663", current_rank: "Police Officer", active_per_last_reported_status: "Yes" },
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const officers = await fetchAllNycCcrbOfficers();
+
+    expect(officers).toEqual([
+      { taxId: "1", firstName: "Chris", lastName: "Dengel", badgeNumber: "01717", rank: "Sergeant", active: false },
+      { taxId: "2", firstName: "Nabil", lastName: "Laafar", badgeNumber: "15663", rank: "Police Officer", active: true },
+    ]);
+  });
+
+  it("skips a row missing tax_id, officer_first_name, or officer_last_name rather than throwing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse([
+        { officer_first_name: "No", officer_last_name: "TaxId" },
+        { tax_id: "3", officer_last_name: "NoFirstName" },
+        { tax_id: "4", officer_first_name: "No" },
+        { tax_id: "5", officer_first_name: "Has", officer_last_name: "All" },
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const officers = await fetchAllNycCcrbOfficers();
+    expect(officers).toHaveLength(1);
+    expect(officers[0].taxId).toBe("5");
+  });
+
+  it("follows $offset pagination until a page returns fewer than PAGE_SIZE rows", async () => {
+    const fullPage = Array.from({ length: 1000 }, (_, i) => ({
+      tax_id: String(i), officer_first_name: "F", officer_last_name: "L",
+    }));
+    const shortPage = [{ tax_id: "1000", officer_first_name: "F", officer_last_name: "L" }];
+
+    let callCount = 0;
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      callCount++;
+      return jsonResponse(callCount === 1 ? fullPage : shortPage);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const officers = await fetchAllNycCcrbOfficers();
+
+    expect(callCount).toBe(2);
+    expect(officers).toHaveLength(1001);
+  });
+
+  it("sends the X-App-Token header when an app token is provided", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchAllNycCcrbOfficers({ appToken: "test-token" });
+    const [, options] = fetchMock.mock.calls[0];
+    expect(options.headers["X-App-Token"]).toBe("test-token");
   });
 });

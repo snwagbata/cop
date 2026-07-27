@@ -99,6 +99,21 @@ describe("DB-level role separation (cop_public_api / cop_internal_api)", () => {
       expect(result.rowCount).toBe(1);
     });
 
+    it("can INSERT and SELECT officers.external_officer_ref (migration 0020 — no new grant needed, column added to an already-granted table)", async () => {
+      const inserted = await pool.query<{ id: string }>(
+        `INSERT INTO officers (first_name, last_name, department_id, employment_status, external_officer_ref)
+         VALUES ('Grant', 'Check', $1, 'active', 'nyc_ccrb:grant-check-tax-id') RETURNING id`,
+        [SEED.departments.springfield],
+      );
+      expect(inserted.rowCount).toBe(1);
+
+      const selected = await pool.query<{ external_officer_ref: string }>(
+        `SELECT external_officer_ref FROM officers WHERE id = $1`,
+        [inserted.rows[0].id],
+      );
+      expect(selected.rows[0].external_officer_ref).toBe("nyc_ccrb:grant-check-tax-id");
+    });
+
     it("can UPDATE review_queue (e.g. resolving a review item)", async () => {
       const inserted = await pool.query(
         `INSERT INTO review_queue (proposed_record, match_confidence, status)
