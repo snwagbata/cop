@@ -20,6 +20,9 @@ function allegation(overrides: Partial<NycCcrbAllegation> = {}): NycCcrbAllegati
     officerFirstName: "Alfred",
     officerLastName: "Hernandez",
     shieldNo: "05046",
+    taxId: "942643",
+    officerRank: "Police Officer",
+    officerActive: true,
     incidentDate: "2018-01-05",
     ...overrides,
   };
@@ -184,7 +187,14 @@ describe("runNycCcrbPipeline", () => {
     expect(reviewQueueRows.rows[0].proposed_record.note).toMatch(/no incident date/i);
   });
 
-  it("queues a low-confidence candidate with a note when no shield number is on file", async () => {
+  it("creates a new officer (badge_number NULL) and still includes the no-shield-number note, when no shield number is on file", async () => {
+    // Before this feature, no officers row existed for NYC to match
+    // against at all, so this landed at 'low' confidence with
+    // officerId: null. Now, with taxId + a full name present and no
+    // existing officer, resolveOrCreateOfficer creates one -- the note is
+    // still worth keeping (a reviewer should still double-check identity
+    // on a freshly-created officer with no badge number on file), it's
+    // just no longer paired with an unresolved match.
     await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
 
     const fetchNycCcrbAllegations = vi.fn().mockResolvedValue([allegation({ shieldNo: null })]);
@@ -197,8 +207,117 @@ describe("runNycCcrbPipeline", () => {
         WHERE s.external_ref = '201806447:240280'`,
     );
     expect(reviewQueueRows.rows).toHaveLength(1);
-    expect(reviewQueueRows.rows[0].match_confidence).toBe("low"); // no officers table row exists to match against
+    expect(reviewQueueRows.rows[0].match_confidence).toBe("high");
     expect(reviewQueueRows.rows[0].proposed_record.note).toMatch(/no shield number/i);
+    expect(reviewQueueRows.rows[0].proposed_record.officerId).toBeDefined();
+
+    const officerRow = await pool.query(
+      `SELECT badge_number, external_officer_ref, rank, employment_status FROM officers WHERE external_officer_ref = 'nyc_ccrb:942643'`,
+    );
+    expect(officerRow.rows).toHaveLength(1);
+    expect(officerRow.rows[0].badge_number).toBeNull();
+    expect(officerRow.rows[0].rank).toBe("Police Officer");
+    expect(officerRow.rows[0].employment_status).toBe("active");
+  });
+
+  it("resolves via external_officer_ref immediately when a prior officer already has it set, skipping fuzzy matching", async () => {
+    await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
+
+    const priorOfficer = await pool.query<{ id: string }>(
+      `INSERT INTO officers (first_name, last_name, department_id, employment_status, external_officer_ref)
+       VALUES ('Someone', 'Different', $1, 'active', 'nyc_ccrb:942643') RETURNING id`,
+      [SEED.departments.nyc.id],
+    );
+
+    const fetchNycCcrbAllegations = vi.fn().mockResolvedValue([allegation()]);
+    await runNycCcrbPipeline(pool, ENV, { fetchNycCcrbAllegations });
+
+    const reviewQueueRows = await pool.query(
+      `SELECT rq.proposed_record, rq.match_confidence
+         FROM review_queue rq JOIN sources s ON s.id = rq.source_id
+        WHERE s.external_ref = '201806447:240280'`,
+    );
+    expect(reviewQueueRows.rows[0].match_confidence).toBe("high");
+    expect(reviewQueueRows.rows[0].proposed_record.officerId).toBe(priorOfficer.rows[0].id);
+
+    // Scoped to the NYC department -- seed data (db/seed/0001_synthetic_sample_data.sql)
+    // already has 3 officers in Springfield/Shelbyville, unrelated to this test.
+    const officerCount = await pool.query(`SELECT count(*) FROM officers WHERE department_id = $1`, [
+      SEED.departments.nyc.id,
+    ]);
+    expect(officerCount.rows[0].count).toBe("1"); // no new officer created
+  });
+
+  it("does not stamp external_officer_ref onto an officer resolved only via matchOfficer's fuzzy name+department match", async () => {
+    await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
+
+    // Same officer as the "clean candidate" test above, but with no
+    // external_officer_ref set -- exercises the fuzzy-match fallback path.
+    const fuzzyMatched = await pool.query<{ id: string }>(
+      `INSERT INTO officers (first_name, last_name, department_id, employment_status)
+       VALUES ('Alfred', 'Hernandez', $1, 'active') RETURNING id`,
+      [SEED.departments.nyc.id],
+    );
+
+    const fetchNycCcrbAllegations = vi.fn().mockResolvedValue([allegation()]);
+    await runNycCcrbPipeline(pool, ENV, { fetchNycCcrbAllegations });
+
+    const reviewQueueRows = await pool.query(
+      `SELECT rq.match_confidence, rq.proposed_record
+         FROM review_queue rq JOIN sources s ON s.id = rq.source_id
+        WHERE s.external_ref = '201806447:240280'`,
+    );
+    expect(reviewQueueRows.rows[0].match_confidence).toBe("medium");
+    expect(reviewQueueRows.rows[0].proposed_record.officerId).toBe(fuzzyMatched.rows[0].id);
+
+    const officerRow = await pool.query(`SELECT external_officer_ref FROM officers WHERE id = $1`, [
+      fuzzyMatched.rows[0].id,
+    ]);
+    expect(officerRow.rows[0].external_officer_ref).toBeNull(); // not stamped
+  });
+
+  it("reuses the same newly-created officer across two allegations sharing the same taxId within one run", async () => {
+    await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
+
+    const fetchNycCcrbAllegations = vi.fn().mockResolvedValue([
+      allegation({ allegationRecordIdentity: "240282" }),
+      allegation({ allegationRecordIdentity: "240281" }),
+    ]);
+    await runNycCcrbPipeline(pool, ENV, { fetchNycCcrbAllegations });
+
+    const officerCount = await pool.query(`SELECT count(*) FROM officers WHERE external_officer_ref = 'nyc_ccrb:942643'`);
+    expect(officerCount.rows[0].count).toBe("1");
+
+    const reviewQueueRows = await pool.query(
+      `SELECT DISTINCT rq.proposed_record->>'officerId' AS officer_id
+         FROM review_queue rq JOIN sources s ON s.id = rq.source_id
+        WHERE s.external_ref IN ('201806447:240282', '201806447:240281')`,
+    );
+    expect(reviewQueueRows.rows).toHaveLength(1); // both point at the same officerId
+  });
+
+  it("leaves the candidate unresolved (low confidence, no officer created) when there's no officer name at all, even with a taxId present", async () => {
+    await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
+
+    const fetchNycCcrbAllegations = vi
+      .fn()
+      .mockResolvedValue([allegation({ officerFirstName: null, officerLastName: null })]);
+    await runNycCcrbPipeline(pool, ENV, { fetchNycCcrbAllegations });
+
+    const reviewQueueRows = await pool.query(
+      `SELECT rq.match_confidence, rq.proposed_record
+         FROM review_queue rq JOIN sources s ON s.id = rq.source_id
+        WHERE s.external_ref = '201806447:240280'`,
+    );
+    expect(reviewQueueRows.rows[0].match_confidence).toBe("low");
+    expect(reviewQueueRows.rows[0].proposed_record.officerId).toBeUndefined();
+
+    // Scoped to the NYC department -- seed data (db/seed/0001_synthetic_sample_data.sql)
+    // already has 3 officers in Springfield/Shelbyville, unrelated to this test.
+    const officerCount = await pool.query(`SELECT count(*) FROM officers WHERE department_id = $1`, [
+      SEED.departments.nyc.id,
+    ]);
+    expect(officerCount.rows[0].count).toBe("0");
   });
 
   it("queues a low-confidence candidate with a different note when no officer name was returned at all", async () => {
@@ -218,7 +337,7 @@ describe("runNycCcrbPipeline", () => {
   });
 
   it("isolates one config row's failure -- other rows still run", async () => {
-    const failingConfigId = await insertConfig(pool, { departmentName: "Some Other Department" });
+    const failingConfigId = await insertConfig(pool, { departmentName: SEED.departments.springfield.name });
     await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
 
     let callCount = 0;

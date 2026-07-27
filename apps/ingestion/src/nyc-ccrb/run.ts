@@ -1,7 +1,7 @@
 import type pg from "pg";
 import { hasBeenQueued, matchOfficer, queueCandidate, startRun, finishRun } from "@cop/ingestion-lib";
-import type { CandidateItem } from "@cop/ingestion-lib";
-import { fetchNycCcrbAllegations } from "./client.js";
+import type { CandidateItem, MatchResult } from "@cop/ingestion-lib";
+import { fetchNycCcrbAllegations, type NycCcrbAllegation } from "./client.js";
 
 /**
  * Orchestration for INGESTION_DESIGN.md §3.2's NYC CCRB pilot -- the
@@ -47,6 +47,94 @@ export function isNycCcrbConfig(value: unknown): value is NycCcrbRunConfig {
 }
 
 /**
+ * Resolves an allegation's officer, in priority order:
+ *  1. external_officer_ref exact hit (nyc_ccrb:<taxId>) -- authoritative,
+ *     'high' confidence, no fuzzy matching needed. Expected to hit for
+ *     ~100% of allegations once backfillOfficers.ts's bulk import has run
+ *     for this department; only misses for an officer newly added to
+ *     CCRB's dataset since the last bulk import.
+ *  2. matchOfficer's existing name+department fuzzy match, unchanged --
+ *     in case a reviewer already manually created a matching officer.
+ *     Deliberately does NOT stamp external_officer_ref onto a match found
+ *     this way (design doc §3): promoting an ambiguous fuzzy match into a
+ *     permanent hard identity link would compound a wrong guess into every
+ *     future run.
+ *  3. Create a new officer from this allegation's own CCRB roster fields
+ *     (rare -- only reached when both 1 and 2 miss), same field mapping
+ *     backfillOfficers.ts uses for the bulk import.
+ */
+async function resolveOrCreateOfficer(
+  pool: pg.Pool,
+  allegation: NycCcrbAllegation,
+  config: NycCcrbRunConfig,
+  departmentId: string,
+): Promise<MatchResult> {
+  if (allegation.taxId) {
+    const existing = await pool.query<{ id: string }>(`SELECT id FROM officers WHERE external_officer_ref = $1`, [
+      `nyc_ccrb:${allegation.taxId}`,
+    ]);
+    if (existing.rows[0]) {
+      return { officerId: existing.rows[0].id, confidence: "high" };
+    }
+  }
+
+  const officerName =
+    allegation.officerFirstName && allegation.officerLastName
+      ? `${allegation.officerFirstName} ${allegation.officerLastName}`
+      : undefined;
+
+  const matched = await matchOfficer(pool, { name: officerName, departmentName: config.departmentName });
+  if (matched.officerId) {
+    return matched;
+  }
+
+  if (!allegation.taxId || !allegation.officerFirstName || !allegation.officerLastName) {
+    // Nothing stable to create a new officer from -- leave unresolved.
+    // run.ts's caller already surfaces a note for this case.
+    return { officerId: null, confidence: "low" };
+  }
+
+  const employmentStatus = allegation.officerActive === true ? "active" : "inactive";
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const created = await client.query<{ id: string }>(
+      `INSERT INTO officers (first_name, last_name, department_id, badge_number, rank, employment_status, external_officer_ref)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [
+        allegation.officerFirstName,
+        allegation.officerLastName,
+        departmentId,
+        allegation.shieldNo,
+        allegation.officerRank,
+        employmentStatus,
+        `nyc_ccrb:${allegation.taxId}`,
+      ],
+    );
+    const officerId = created.rows[0].id;
+
+    await client.query(
+      `INSERT INTO record_revisions (record_type, record_id, change_type, diff, changed_by)
+       VALUES ('officer', $1, 'create', $2, NULL)`,
+      [
+        officerId,
+        JSON.stringify({ source: "nyc_ccrb_pipeline_create_on_miss", externalOfficerRef: `nyc_ccrb:${allegation.taxId}` }),
+      ],
+    );
+
+    await client.query("COMMIT");
+    return { officerId, confidence: "high" };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Runs the NYC CCRB pipeline for every enabled `ingestion_configs` row
  * with source_type = 'nyc_ccrb'. Each row gets its own `ingestion_runs`
  * row; a failure processing one row is caught and recorded on that row's
@@ -87,6 +175,14 @@ async function runOneConfigRow(
   let itemsDeduped = 0;
 
   try {
+    const deptResult = await pool.query<{ id: string }>(`SELECT id FROM departments WHERE name = $1`, [
+      config.departmentName,
+    ]);
+    if (!deptResult.rows[0]) {
+      throw new Error(`No department found with name "${config.departmentName}" -- cannot resolve/create officers.`);
+    }
+    const departmentId = deptResult.rows[0].id;
+
     const allegations = await deps.fetchNycCcrbAllegations({ appToken: env.socrataAppToken });
     itemsFetched = allegations.length;
 
@@ -103,10 +199,7 @@ async function runOneConfigRow(
           ? `${allegation.officerFirstName} ${allegation.officerLastName}`
           : undefined;
 
-      const matchResult = await matchOfficer(pool, {
-        name: officerName,
-        departmentName: config.departmentName,
-      });
+      const matchResult = await resolveOrCreateOfficer(pool, allegation, config, departmentId);
 
       const noteParts: string[] = [];
       if (!officerName) {
