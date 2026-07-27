@@ -68,7 +68,7 @@ async function backfillOneConfigRow(
           SET proposed_record = (proposed_record - 'officerName') || jsonb_build_object('officerId', $1::text),
               match_confidence = 'high'
         WHERE status = 'pending'
-          AND source_id = (SELECT id FROM sources WHERE external_ref = $2)`,
+          AND source_id = (SELECT id FROM sources WHERE external_ref = $2 AND source_type = 'official_dataset')`,
       [officerId, externalRef],
     );
     updated += result.rowCount ?? 0;
