@@ -85,6 +85,10 @@ describe("runNycCcrbReviewQueueBackfill", () => {
     expect(results).toEqual([
       { departmentName: SEED.departments.nyc.name, allegationsChecked: 1, reviewQueueRowsUpdated: 1 },
     ]);
+    // Must widen past the client's 30-day default -- this script runs some
+    // unknown number of days after the original queueing run, so it needs a
+    // window generous enough to still cover that run's complaints.
+    expect(fetchNycCcrbAllegations).toHaveBeenCalledWith({ appToken: undefined, sinceDays: 120 });
 
     const updated = await pool.query(`SELECT proposed_record, match_confidence FROM review_queue WHERE id = $1`, [
       queueItemId,

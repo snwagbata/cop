@@ -47,7 +47,13 @@ async function backfillOneConfigRow(
   deps: { fetchNycCcrbAllegations: typeof fetchNycCcrbAllegations },
   config: NycCcrbRunConfig,
 ): Promise<NycCcrbReviewQueueBackfillResult> {
-  const allegations = await deps.fetchNycCcrbAllegations({ appToken: env.socrataAppToken });
+  // sinceDays: 120, not the client's default 30 -- this script runs some
+  // unknown number of days after the PR that ships it merges/deploys (see
+  // design doc §4's "Post-implementation" operational step), so it must
+  // still cover the original run's window even after a realistic
+  // merge-to-run delay, or complaints from the oldest part of that window
+  // silently age out of the re-fetch with no error and no signal.
+  const allegations = await deps.fetchNycCcrbAllegations({ appToken: env.socrataAppToken, sinceDays: 120 });
   let updated = 0;
 
   for (const allegation of allegations) {
