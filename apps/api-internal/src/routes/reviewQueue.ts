@@ -280,6 +280,29 @@ async function promoteReviewQueueItem(
       diff,
       changedBy: reviewerId,
     });
+
+    const proposedOutcome = (proposed as IncidentCandidateProposal).proposedOutcome;
+    if (proposedOutcome) {
+      const outcomeResult = await client.query<{ id: string }>(
+        `INSERT INTO outcomes (incident_id, outcome_type, date, details)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id`,
+        [incidentId, proposedOutcome.outcomeType, proposedOutcome.date ?? null, proposedOutcome.details ?? null],
+      );
+      const outcomeDiff = {
+        incidentId,
+        outcomeType: proposedOutcome.outcomeType,
+        date: proposedOutcome.date ?? null,
+        details: proposedOutcome.details ?? null,
+      };
+      await writeRecordRevision(client, {
+        recordType: "outcome",
+        recordId: outcomeResult.rows[0].id,
+        changeType: "create",
+        diff: outcomeDiff,
+        changedBy: reviewerId,
+      });
+    }
   } else {
     throw new ApiError(400, "invalid_proposal_type", `Unrecognized proposed_record.type "${(proposed as { type?: string }).type}".`);
   }
