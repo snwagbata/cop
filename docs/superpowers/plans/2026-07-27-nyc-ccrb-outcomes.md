@@ -1451,3 +1451,5 @@ DATABASE_URL="<deployed INGESTION_DATABASE_URL>" npm run --workspace apps/ingest
 ```
 
 Safe to run even though this exact script already ran once for the officer-only case (Task 7's design note above) — it will reach the same rows again and add `proposedOutcome` where the mapping applies, without disturbing already-resolved `officerId`s.
+
+**Note:** this only backfills rows still in `'pending'` status. Any NYC CCRB item a reviewer already approved between the prior officer-bulk-import feature and this one will not retroactively gain a structured outcome — that's correct per this design's own scope (§3 explicitly excludes outcomes against already-approved incidents), but worth knowing before assuming the backfill is fully comprehensive. Add one by hand via `POST /api/internal/outcomes` for any such row if needed.
