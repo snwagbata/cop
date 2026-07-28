@@ -275,6 +275,16 @@ function renderDetails(rec: ReviewQueueItem["proposedRecord"]) {
           <dd>{rec.note}</dd>
         </>
       )}
+      {rec.proposedOutcome && (
+        <>
+          <dt>Proposed outcome</dt>
+          <dd>
+            {rec.proposedOutcome.outcomeType.replace(/_/g, " ")}
+            {rec.proposedOutcome.date ? ` — ${formatDate(rec.proposedOutcome.date)}` : ""}
+            {rec.proposedOutcome.details ? ` (${rec.proposedOutcome.details})` : ""}
+          </dd>
+        </>
+      )}
     </dl>
   );
 }

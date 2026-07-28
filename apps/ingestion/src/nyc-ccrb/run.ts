@@ -2,6 +2,7 @@ import type pg from "pg";
 import { hasBeenQueued, matchOfficer, queueCandidate, startRun, finishRun } from "@cop/ingestion-lib";
 import type { CandidateItem, MatchResult } from "@cop/ingestion-lib";
 import { fetchNycCcrbAllegations, type NycCcrbAllegation } from "./client.js";
+import { mapNypdDispositionToOutcomeType } from "./disposition.js";
 
 /**
  * Orchestration for INGESTION_DESIGN.md §3.2's NYC CCRB pilot -- the
@@ -217,6 +218,8 @@ async function runOneConfigRow(
         );
       }
 
+      const mappedOutcomeType = mapNypdDispositionToOutcomeType(allegation.nypdDisposition);
+
       const item: CandidateItem = {
         sourceType: "official_dataset",
         externalRef,
@@ -229,6 +232,17 @@ async function runOneConfigRow(
           (allegation.ccrbDisposition ? ` (${allegation.ccrbDisposition}).` : "."),
         dateAsReported: allegation.incidentDate ?? undefined,
         note: noteParts.length > 0 ? noteParts.join(" ") : undefined,
+        proposedOutcome: mappedOutcomeType
+          ? {
+              outcomeType: mappedOutcomeType,
+              date: allegation.closeDate ?? undefined,
+              // Preserves the exact raw source string even though it's
+              // mapped to a coarser enum -- a reviewer (and the public
+              // record, once approved) can see precisely what NYPD's own
+              // disposition said, not just this schema's 3-way bucket.
+              details: allegation.nypdDisposition ?? undefined,
+            }
+          : undefined,
       };
 
       const client = await pool.connect();

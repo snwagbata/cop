@@ -16,6 +16,11 @@ function allegation(overrides: Partial<NycCcrbAllegation> = {}): NycCcrbAllegati
     fadoType: "Force",
     allegation: "Physical force",
     ccrbDisposition: "Substantiated (Charges)",
+    // Deliberately a disposition that maps to null (bare "Guilty" has no
+    // stated sanction -- see disposition.ts) so every pre-existing test in
+    // this file, none of which were written expecting a proposedOutcome,
+    // keeps passing unchanged. Tests that specifically exercise
+    // proposedOutcome override this field explicitly.
     nypdDisposition: "APU Guilty",
     officerFirstName: "Alfred",
     officerLastName: "Hernandez",
@@ -24,6 +29,7 @@ function allegation(overrides: Partial<NycCcrbAllegation> = {}): NycCcrbAllegati
     officerRank: "Police Officer",
     officerActive: true,
     incidentDate: "2018-01-05",
+    closeDate: "2018-06-01",
     ...overrides,
   };
 }
@@ -334,6 +340,51 @@ describe("runNycCcrbPipeline", () => {
     );
     expect(reviewQueueRows.rows[0].proposed_record.note).toMatch(/did not return an officer name/i);
     expect(reviewQueueRows.rows[0].proposed_record.officerName).toBeUndefined();
+  });
+
+  it("includes proposedOutcome when nypdDisposition maps to a known OutcomeType", async () => {
+    await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
+
+    const fetchNycCcrbAllegations = vi
+      .fn()
+      .mockResolvedValue([allegation({ nypdDisposition: "Command Discipline - A", closeDate: "2019-04-10" })]);
+
+    await runNycCcrbPipeline(pool, ENV, { fetchNycCcrbAllegations });
+
+    const reviewQueueRows = await pool.query(
+      `SELECT rq.proposed_record FROM review_queue rq JOIN sources s ON s.id = rq.source_id WHERE s.external_ref = '201806447:240280'`,
+    );
+    expect(reviewQueueRows.rows[0].proposed_record.proposedOutcome).toEqual({
+      outcomeType: "internal_discipline",
+      date: "2019-04-10",
+      details: "Command Discipline - A",
+    });
+  });
+
+  it("omits proposedOutcome (not a null placeholder) when nypdDisposition doesn't map to a known OutcomeType", async () => {
+    await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
+
+    const fetchNycCcrbAllegations = vi.fn().mockResolvedValue([allegation({ nypdDisposition: "APU - Decision Pending" })]);
+
+    await runNycCcrbPipeline(pool, ENV, { fetchNycCcrbAllegations });
+
+    const reviewQueueRows = await pool.query(
+      `SELECT rq.proposed_record FROM review_queue rq JOIN sources s ON s.id = rq.source_id WHERE s.external_ref = '201806447:240280'`,
+    );
+    expect(reviewQueueRows.rows[0].proposed_record.proposedOutcome).toBeUndefined();
+  });
+
+  it("omits proposedOutcome when nypdDisposition itself is null", async () => {
+    await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
+
+    const fetchNycCcrbAllegations = vi.fn().mockResolvedValue([allegation({ nypdDisposition: null })]);
+
+    await runNycCcrbPipeline(pool, ENV, { fetchNycCcrbAllegations });
+
+    const reviewQueueRows = await pool.query(
+      `SELECT rq.proposed_record FROM review_queue rq JOIN sources s ON s.id = rq.source_id WHERE s.external_ref = '201806447:240280'`,
+    );
+    expect(reviewQueueRows.rows[0].proposed_record.proposedOutcome).toBeUndefined();
   });
 
   it("isolates one config row's failure -- other rows still run", async () => {

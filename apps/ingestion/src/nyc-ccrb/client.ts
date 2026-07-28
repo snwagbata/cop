@@ -88,11 +88,20 @@ export interface NycCcrbAllegation {
    * incident_date on file (rare; run.ts surfaces a note when this
    * happens, since a date is required for review-queue approval). */
   incidentDate: string | null;
+  /** CCRB's own close_date for the complaint this allegation belongs to
+   * (when the case was closed, not when the alleged incident occurred) --
+   * truncated to YYYY-MM-DD. Every complaint this pipeline ever fetches is
+   * already filtered to be closed (fetchClosedComplaints's whole purpose),
+   * so this is expected to be present in practice; null only if the raw
+   * field was genuinely absent. Used as the outcome's date (never
+   * incidentDate -- that would conflate two different dates). */
+  closeDate: string | null;
 }
 
 interface RawComplaintRow {
   complaint_id?: string;
   incident_date?: string;
+  close_date?: string;
 }
 
 interface RawAllegationRow {
@@ -178,6 +187,11 @@ async function fetchBatchedIn<T>(dataset: string, field: string, values: string[
   return results;
 }
 
+interface ComplaintDates {
+  incidentDate: string | null;
+  closeDate: string | null;
+}
+
 /**
  * Fetches complaints closed within the trailing `sinceDays` window
  * (default 30), paginated via $limit/$offset until a page returns fewer
@@ -185,14 +199,14 @@ async function fetchBatchedIn<T>(dataset: string, field: string, values: string[
  * source (see file-level comment) -- already-seen complaints are filtered
  * by hasBeenQueued in run.ts before any DB write, same as before.
  */
-async function fetchClosedComplaints(sinceDays: number, appToken?: string): Promise<Map<string, string | null>> {
+async function fetchClosedComplaints(sinceDays: number, appToken?: string): Promise<Map<string, ComplaintDates>> {
   const sinceDate = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const incidentDateByComplaintId = new Map<string, string | null>();
+  const datesByComplaintId = new Map<string, ComplaintDates>();
 
   for (let page = 0; page < MAX_PAGES; page++) {
     const params = new URLSearchParams();
     params.set("$where", `close_date >= '${sinceDate}'`);
-    params.set("$select", "complaint_id,incident_date");
+    params.set("$select", "complaint_id,incident_date,close_date");
     params.set("$limit", String(PAGE_SIZE));
     params.set("$offset", String(page * PAGE_SIZE));
     const url = `${BASE_URL}/${COMPLAINTS_DATASET}.json?${params.toString()}`;
@@ -200,14 +214,21 @@ async function fetchClosedComplaints(sinceDays: number, appToken?: string): Prom
     const rows = await fetchSocrataJson<RawComplaintRow[]>(url, appToken);
     for (const row of rows) {
       if (row.complaint_id) {
-        incidentDateByComplaintId.set(row.complaint_id, row.incident_date ?? null);
+        datesByComplaintId.set(row.complaint_id, {
+          incidentDate: row.incident_date ?? null,
+          // Truncated to YYYY-MM-DD (raw field includes a time component,
+          // e.g. "2011-06-01T18:11:15.000") -- matches how sinceDate itself
+          // is computed above, and matches outcomes.date's plain `date`
+          // column type.
+          closeDate: row.close_date ? row.close_date.slice(0, 10) : null,
+        });
       }
     }
     if (rows.length < PAGE_SIZE) {
       break;
     }
   }
-  return incidentDateByComplaintId;
+  return datesByComplaintId;
 }
 
 /**
@@ -220,8 +241,8 @@ export async function fetchNycCcrbAllegations(
 ): Promise<NycCcrbAllegation[]> {
   const sinceDays = options.sinceDays ?? 30;
 
-  const incidentDateByComplaintId = await fetchClosedComplaints(sinceDays, options.appToken);
-  const complaintIds = [...incidentDateByComplaintId.keys()];
+  const datesByComplaintId = await fetchClosedComplaints(sinceDays, options.appToken);
+  const complaintIds = [...datesByComplaintId.keys()];
 
   const rawAllegations = await fetchBatchedIn<RawAllegationRow>(
     ALLEGATIONS_DATASET,
@@ -241,7 +262,7 @@ export async function fetchNycCcrbAllegations(
 
   const results: NycCcrbAllegation[] = [];
   for (const raw of rawAllegations) {
-    const normalized = normalizeAllegation(raw, officersByTaxId, incidentDateByComplaintId);
+    const normalized = normalizeAllegation(raw, officersByTaxId, datesByComplaintId);
     if (normalized !== null) {
       results.push(normalized);
     }
@@ -252,7 +273,7 @@ export async function fetchNycCcrbAllegations(
 function normalizeAllegation(
   raw: RawAllegationRow,
   officersByTaxId: Map<string, RawOfficerRow>,
-  incidentDateByComplaintId: Map<string, string | null>,
+  datesByComplaintId: Map<string, ComplaintDates>,
 ): NycCcrbAllegation | null {
   if (!raw.complaint_id || !raw.complaint_officer_number || !raw.allegation_record_identity) {
     // No stable composite id -- can't dedupe this row. Skip rather than
@@ -278,7 +299,8 @@ function normalizeAllegation(
     officerActive: officer?.active_per_last_reported_status === undefined
       ? null
       : officer.active_per_last_reported_status === "Yes",
-    incidentDate: incidentDateByComplaintId.get(raw.complaint_id) ?? null,
+    incidentDate: datesByComplaintId.get(raw.complaint_id)?.incidentDate ?? null,
+    closeDate: datesByComplaintId.get(raw.complaint_id)?.closeDate ?? null,
   };
 }
 

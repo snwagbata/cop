@@ -165,6 +165,110 @@ describe("review-queue", () => {
     expect(incidentRes.rows.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("approving an incident_candidate with a proposedOutcome creates the outcome and a record_revisions entry for it", async () => {
+    const id = "20000000-0000-0000-0000-000000000003";
+    await superPool.query(
+      `INSERT INTO review_queue (id, proposed_record, source_id, match_confidence, status)
+       VALUES ($1, $2, $3, 'high', 'pending')`,
+      [
+        id,
+        JSON.stringify({
+          type: "incident_candidate",
+          officerId: OFFICER_ROBERT_SMITH,
+          departmentName: "Springfield Police Department (fictional)",
+          incidentType: "use_of_force",
+          shortDescription: "A use-of-force incident with a proposed disciplinary outcome.",
+          date: "2023-08-01",
+          proposedOutcome: { outcomeType: "internal_discipline", date: "2023-09-15", details: "Command Discipline - A" },
+        }),
+        SOURCE_TIER2_REGISTRY,
+      ],
+    );
+    const before = await countRecordRevisions();
+
+    const res = await request(app)
+      .post(`/api/internal/review-queue/${id}/approve`)
+      .set(...authHeader(token))
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.item.status).toBe("approved");
+
+    const incidentRes = await superPool.query<{ id: string }>(
+      `SELECT i.id FROM incidents i
+         JOIN incident_officers io ON io.incident_id = i.id
+        WHERE io.officer_id = $1 AND i.short_description = 'A use-of-force incident with a proposed disciplinary outcome.'`,
+      [OFFICER_ROBERT_SMITH],
+    );
+    expect(incidentRes.rows).toHaveLength(1);
+    const incidentId = incidentRes.rows[0].id;
+
+    const outcomeRes = await superPool.query(
+      `SELECT outcome_type, date, details FROM outcomes WHERE incident_id = $1`,
+      [incidentId],
+    );
+    expect(outcomeRes.rows).toHaveLength(1);
+    expect(outcomeRes.rows[0]).toMatchObject({
+      outcome_type: "internal_discipline",
+      details: "Command Discipline - A",
+    });
+
+    const revisionRes = await superPool.query(
+      `SELECT record_type, change_type, changed_by FROM record_revisions
+        WHERE record_id = (SELECT id FROM outcomes WHERE incident_id = $1)`,
+      [incidentId],
+    );
+    expect(revisionRes.rows).toHaveLength(1);
+    expect(revisionRes.rows[0]).toMatchObject({
+      record_type: "outcome",
+      change_type: "create",
+      changed_by: TEST_ADMIN.id,
+    });
+
+    // Two new record_revisions rows this time: one for the incident (same
+    // as every incident_candidate approval), one for the outcome.
+    expect(await countRecordRevisions()).toBe(before + 2);
+  });
+
+  it("approving an incident_candidate with no proposedOutcome creates no outcomes row", async () => {
+    const id = "20000000-0000-0000-0000-000000000004";
+    await superPool.query(
+      `INSERT INTO review_queue (id, proposed_record, source_id, match_confidence, status)
+       VALUES ($1, $2, $3, 'high', 'pending')`,
+      [
+        id,
+        JSON.stringify({
+          type: "incident_candidate",
+          officerId: OFFICER_ROBERT_SMITH,
+          departmentName: "Springfield Police Department (fictional)",
+          incidentType: "use_of_force",
+          shortDescription: "A use-of-force incident with no proposed outcome.",
+          date: "2023-08-01",
+        }),
+        SOURCE_TIER2_REGISTRY,
+      ],
+    );
+
+    const res = await request(app)
+      .post(`/api/internal/review-queue/${id}/approve`)
+      .set(...authHeader(token))
+      .send({});
+    expect(res.status).toBe(200);
+
+    const incidentRes = await superPool.query<{ id: string }>(
+      `SELECT i.id FROM incidents i
+         JOIN incident_officers io ON io.incident_id = i.id
+        WHERE io.officer_id = $1 AND i.short_description = 'A use-of-force incident with no proposed outcome.'`,
+      [OFFICER_ROBERT_SMITH],
+    );
+    expect(incidentRes.rows).toHaveLength(1);
+
+    const outcomeRes = await superPool.query(`SELECT id FROM outcomes WHERE incident_id = $1`, [
+      incidentRes.rows[0].id,
+    ]);
+    expect(outcomeRes.rows).toHaveLength(0);
+  });
+
   it("rejecting a pending item sets status/reason and writes no spurious record_revisions row", async () => {
     const id = "20000000-0000-0000-0000-000000000002";
     await superPool.query(

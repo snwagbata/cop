@@ -48,6 +48,21 @@ describe("ReviewQueueItemCard", () => {
     expect(screen.queryByLabelText(/Search for the officer/)).not.toBeInTheDocument();
   });
 
+  it("renders a proposed outcome when the incident_candidate includes one", () => {
+    const item = reviewQueueFixtures.find((i) => i.id === "rq-outcome-1")!;
+    renderCard(<ReviewQueueItemCard item={item} onApprove={vi.fn()} onReject={vi.fn()} />);
+
+    expect(screen.getByText(/internal discipline/)).toBeInTheDocument();
+    expect(screen.getByText(/Command Discipline - A/)).toBeInTheDocument();
+  });
+
+  it("renders no 'Proposed outcome' row when the incident_candidate has none", () => {
+    const item = reviewQueueFixtures[1]; // incident_candidate, no proposedOutcome
+    renderCard(<ReviewQueueItemCard item={item} onApprove={vi.fn()} onReject={vi.fn()} />);
+
+    expect(screen.queryByText("Proposed outcome")).not.toBeInTheDocument();
+  });
+
   it("renders 'No source attached' when source is null", () => {
     const item = reviewQueueFixtures.find((i) => i.source === null)!;
     renderCard(<ReviewQueueItemCard item={item} onApprove={vi.fn()} onReject={vi.fn()} />);

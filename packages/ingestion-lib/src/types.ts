@@ -1,5 +1,5 @@
 import type pg from "pg";
-import type { IncidentType, MatchConfidence, ReliabilityTier, SourceType } from "@cop/shared-types";
+import type { IncidentType, MatchConfidence, OutcomeType, ReliabilityTier, SourceType } from "@cop/shared-types";
 
 /**
  * Minimal shape both a `pg` Pool and a checked-out PoolClient satisfy --
@@ -56,6 +56,12 @@ export interface CandidateItem {
    * same convention as CreatePublicTipRequest.incidentDateAsReported. */
   dateAsReported?: string;
   note?: string;
+  /** A structured disciplinary outcome to create atomically alongside the
+   * incident when a reviewer approves this candidate (packages/shared-
+   * types's IncidentCandidateProposal carries the identical field through
+   * to the review-queue approval flow) -- pipeline-agnostic; not specific
+   * to any one source, though NYC CCRB is the first to populate it. */
+  proposedOutcome?: { outcomeType: OutcomeType; date?: string; details?: string };
 }
 
 /** Result of matchOfficer (match.ts) -- DESIGN.md §6's match_confidence,

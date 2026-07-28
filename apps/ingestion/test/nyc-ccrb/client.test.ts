@@ -34,7 +34,7 @@ describe("fetchNycCcrbAllegations", () => {
   it("fetches closed complaints, joins matching allegations by complaint_id, and joins officer identity by tax_id", async () => {
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("2mby-ccnw")) {
-        return jsonResponse([{ complaint_id: "201806447", incident_date: "2018-01-05" }]);
+        return jsonResponse([{ complaint_id: "201806447", incident_date: "2018-01-05", close_date: "2018-06-01T12:00:00.000" }]);
       }
       if (url.includes("6xgr-kwjq")) {
         return jsonResponse([
@@ -75,6 +75,7 @@ describe("fetchNycCcrbAllegations", () => {
         officerRank: null,
         officerActive: null,
         incidentDate: "2018-01-05",
+        closeDate: "2018-06-01",
       },
     ]);
 
@@ -226,6 +227,51 @@ describe("fetchNycCcrbAllegations", () => {
 
     expect(allegations).toHaveLength(1);
     expect(allegations[0].incidentDate).toBeNull();
+  });
+
+  it("sets closeDate from the Complaints row's close_date, truncated to YYYY-MM-DD", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("2mby-ccnw")) {
+        return jsonResponse([{ complaint_id: "6", incident_date: "2020-01-01", close_date: "2021-03-15T09:30:00.000" }]);
+      }
+      if (url.includes("6xgr-kwjq")) {
+        return jsonResponse([
+          { complaint_id: "6", complaint_officer_number: "1", allegation_record_identity: "240282", fado_type: "Force", allegation: "x" },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const allegations = await fetchNycCcrbAllegations();
+    expect(allegations[0].closeDate).toBe("2021-03-15");
+  });
+
+  it("sets closeDate to null when the matching complaint has no close_date", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("2mby-ccnw")) {
+        return jsonResponse([{ complaint_id: "6", incident_date: "2020-01-01" }]); // no close_date field
+      }
+      if (url.includes("6xgr-kwjq")) {
+        return jsonResponse([
+          { complaint_id: "6", complaint_officer_number: "1", allegation_record_identity: "240282", fado_type: "Force", allegation: "x" },
+        ]);
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const allegations = await fetchNycCcrbAllegations();
+    expect(allegations[0].closeDate).toBeNull();
+  });
+
+  it("requests close_date in the Complaints $select clause", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchNycCcrbAllegations();
+    const complaintsUrl = urlFor(fetchMock, "2mby-ccnw");
+    expect(complaintsUrl.searchParams.get("$select")).toBe("complaint_id,incident_date,close_date");
   });
 
   it("maps officerRank and officerActive from the Officers-dataset join, and taxId straight from the Allegations row", async () => {

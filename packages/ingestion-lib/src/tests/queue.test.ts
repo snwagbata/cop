@@ -110,6 +110,65 @@ describe("queueCandidate", () => {
     }
   });
 
+  it("carries proposedOutcome through unchanged when the item includes one", async () => {
+    const item: CandidateItem = {
+      sourceType: "official_dataset",
+      externalRef: "test-outcome-passthrough",
+      reliabilityTier: "tier2_official_dataset",
+      officerNameAsReported: "Jane Doe",
+      departmentNameAsReported: SEED.officers.janeDoe.departmentName,
+      incidentType: "use_of_force",
+      shortDescription: "A candidate with a structured outcome attached.",
+      dateAsReported: "2024-01-15",
+      proposedOutcome: { outcomeType: "internal_discipline", date: "2024-02-01", details: "Command Discipline - A" },
+    };
+    const matchResult = { officerId: SEED.officers.janeDoe.id, confidence: "high" as const };
+
+    try {
+      await client.query("BEGIN");
+      const { reviewQueueId } = await queueCandidate(client, item, matchResult);
+      await client.query("COMMIT");
+
+      const reviewQueueRow = await pool.query(`SELECT proposed_record FROM review_queue WHERE id = $1`, [
+        reviewQueueId,
+      ]);
+      expect(reviewQueueRow.rows[0].proposed_record.proposedOutcome).toEqual({
+        outcomeType: "internal_discipline",
+        date: "2024-02-01",
+        details: "Command Discipline - A",
+      });
+    } finally {
+      client.release();
+    }
+  });
+
+  it("omits proposedOutcome entirely (not a null placeholder) when the item doesn't include one", async () => {
+    const item: CandidateItem = {
+      sourceType: "official_dataset",
+      externalRef: "test-outcome-absent",
+      reliabilityTier: "tier2_official_dataset",
+      officerNameAsReported: "Jane Doe",
+      departmentNameAsReported: SEED.officers.janeDoe.departmentName,
+      incidentType: "use_of_force",
+      shortDescription: "A candidate with no outcome attached.",
+      dateAsReported: "2024-01-15",
+    };
+    const matchResult = { officerId: SEED.officers.janeDoe.id, confidence: "high" as const };
+
+    try {
+      await client.query("BEGIN");
+      const { reviewQueueId } = await queueCandidate(client, item, matchResult);
+      await client.query("COMMIT");
+
+      const reviewQueueRow = await pool.query(`SELECT proposed_record FROM review_queue WHERE id = $1`, [
+        reviewQueueId,
+      ]);
+      expect(reviewQueueRow.rows[0].proposed_record.proposedOutcome).toBeUndefined();
+    } finally {
+      client.release();
+    }
+  });
+
   it("rolls back both inserts together if the transaction is aborted", async () => {
     const item: CandidateItem = {
       sourceType: "court_doc",

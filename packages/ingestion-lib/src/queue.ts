@@ -31,6 +31,7 @@ function buildProposal(item: CandidateItem, matchResult: MatchResult): IncidentC
     date: item.dateAsReported,
     note: noteParts.length > 0 ? noteParts.join(" ") : undefined,
     externalUrl: item.externalUrl,
+    proposedOutcome: item.proposedOutcome,
   };
 }
 
