@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { fetchNycCcrbAllegations } from "./client.js";
+import { mapNypdDispositionToOutcomeType } from "./disposition.js";
 import { isNycCcrbConfig, type NycCcrbRunConfig } from "./run.js";
 
 /**
@@ -10,6 +11,12 @@ import { isNycCcrbConfig, type NycCcrbRunConfig } from "./run.js";
  * external_officer_ref -- expected to hit for nearly all of them once
  * backfillOfficers.ts's bulk import has populated the roster. Run this
  * AFTER that bulk import, not before (or every lookup here will miss).
+ *
+ * Officer identity and structured outcome are resolved independently of
+ * each other -- a row can gain a proposedOutcome even when its officer
+ * still doesn't resolve, and vice versa, so this is also safe to re-run
+ * against rows an earlier run already officer-resolved: it will add
+ * proposedOutcome to them without disturbing their existing officerId.
  *
  * Only touches rows still in 'pending' status -- anything a reviewer
  * already approved or rejected by hand is left untouched.
@@ -57,25 +64,45 @@ async function backfillOneConfigRow(
   let updated = 0;
 
   for (const allegation of allegations) {
-    if (!allegation.taxId) {
-      continue;
-    }
-    const officerResult = await pool.query<{ id: string }>(`SELECT id FROM officers WHERE external_officer_ref = $1`, [
-      `nyc_ccrb:${allegation.taxId}`,
-    ]);
-    const officerId = officerResult.rows[0]?.id;
-    if (!officerId) {
-      continue; // not resolvable yet -- left exactly as-is, per design doc §4 step 4
+    const externalRef = `${allegation.complaintId}:${allegation.allegationRecordIdentity}`;
+
+    let officerId: string | undefined;
+    if (allegation.taxId) {
+      const officerResult = await pool.query<{ id: string }>(
+        `SELECT id FROM officers WHERE external_officer_ref = $1`,
+        [`nyc_ccrb:${allegation.taxId}`],
+      );
+      officerId = officerResult.rows[0]?.id;
     }
 
-    const externalRef = `${allegation.complaintId}:${allegation.allegationRecordIdentity}`;
+    const outcomeType = mapNypdDispositionToOutcomeType(allegation.nypdDisposition);
+    const proposedOutcome = outcomeType
+      ? { outcomeType, date: allegation.closeDate ?? undefined, details: allegation.nypdDisposition ?? undefined }
+      : undefined;
+
+    if (!officerId && !proposedOutcome) {
+      continue; // nothing new resolves for this allegation
+    }
+
+    let patch = "proposed_record";
+    const params: unknown[] = [];
+    if (officerId) {
+      params.push(officerId);
+      patch = `(${patch} - 'officerName') || jsonb_build_object('officerId', $${params.length}::text)`;
+    }
+    if (proposedOutcome) {
+      params.push(JSON.stringify(proposedOutcome));
+      patch = `${patch} || jsonb_build_object('proposedOutcome', $${params.length}::jsonb)`;
+    }
+    const confidenceClause = officerId ? `, match_confidence = 'high'` : "";
+    params.push(externalRef);
+
     const result = await pool.query(
       `UPDATE review_queue
-          SET proposed_record = (proposed_record - 'officerName') || jsonb_build_object('officerId', $1::text),
-              match_confidence = 'high'
+          SET proposed_record = ${patch}${confidenceClause}
         WHERE status = 'pending'
-          AND source_id = (SELECT id FROM sources WHERE external_ref = $2 AND source_type = 'official_dataset')`,
-      [officerId, externalRef],
+          AND source_id = (SELECT id FROM sources WHERE external_ref = $${params.length} AND source_type = 'official_dataset')`,
+      params,
     );
     updated += result.rowCount ?? 0;
   }

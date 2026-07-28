@@ -24,6 +24,7 @@ function allegation(overrides: Partial<NycCcrbAllegation> = {}): NycCcrbAllegati
     officerRank: "Police Officer",
     officerActive: true,
     incidentDate: "2018-01-05",
+    closeDate: "2018-06-01",
     ...overrides,
   };
 }
@@ -156,6 +157,120 @@ describe("runNycCcrbReviewQueueBackfill", () => {
     });
 
     const fetchNycCcrbAllegations = vi.fn().mockResolvedValue([allegation({ taxId: null })]);
+    const results = await runNycCcrbReviewQueueBackfill(pool, ENV, { fetchNycCcrbAllegations });
+
+    expect(results[0].reviewQueueRowsUpdated).toBe(0);
+  });
+
+  it("adds proposedOutcome to a pending item even when the officer doesn't resolve", async () => {
+    await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
+    // No officer exists with this external_officer_ref -- officer resolution
+    // will miss, but outcome resolution is independent and must still apply.
+    const queueItemId = await insertPendingQueueItem(pool, "201806447:240280", {
+      type: "incident_candidate",
+      officerName: "Alfred Hernandez",
+      departmentName: SEED.departments.nyc.name,
+      incidentType: "use_of_force",
+      shortDescription: "x",
+    });
+
+    const fetchNycCcrbAllegations = vi
+      .fn()
+      .mockResolvedValue([allegation({ nypdDisposition: "Command Discipline - A", closeDate: "2019-04-10" })]);
+    const results = await runNycCcrbReviewQueueBackfill(pool, ENV, { fetchNycCcrbAllegations });
+
+    expect(results[0].reviewQueueRowsUpdated).toBe(1);
+    const updated = await pool.query(`SELECT proposed_record, match_confidence FROM review_queue WHERE id = $1`, [
+      queueItemId,
+    ]);
+    expect(updated.rows[0].proposed_record.proposedOutcome).toEqual({
+      outcomeType: "internal_discipline",
+      date: "2019-04-10",
+      details: "Command Discipline - A",
+    });
+    // Officer still didn't resolve -- officerName untouched, confidence
+    // unchanged (outcome resolution alone says nothing about officer match).
+    expect(updated.rows[0].proposed_record.officerName).toBe("Alfred Hernandez");
+    expect(updated.rows[0].match_confidence).toBe("low");
+  });
+
+  it("resolves both officerId and proposedOutcome together in one pass when both apply", async () => {
+    await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
+    const officerRow = await pool.query<{ id: string }>(
+      `INSERT INTO officers (first_name, last_name, department_id, employment_status, external_officer_ref)
+       VALUES ('Alfred', 'Hernandez', $1, 'active', 'nyc_ccrb:942643') RETURNING id`,
+      [SEED.departments.nyc.id],
+    );
+    const queueItemId = await insertPendingQueueItem(pool, "201806447:240280", {
+      type: "incident_candidate",
+      officerName: "Alfred Hernandez",
+      departmentName: SEED.departments.nyc.name,
+      incidentType: "use_of_force",
+      shortDescription: "x",
+    });
+
+    const fetchNycCcrbAllegations = vi
+      .fn()
+      .mockResolvedValue([allegation({ nypdDisposition: "APU Closed: Terminated", closeDate: "2020-01-01" })]);
+    const results = await runNycCcrbReviewQueueBackfill(pool, ENV, { fetchNycCcrbAllegations });
+
+    expect(results[0].reviewQueueRowsUpdated).toBe(1);
+    const updated = await pool.query(`SELECT proposed_record, match_confidence FROM review_queue WHERE id = $1`, [
+      queueItemId,
+    ]);
+    expect(updated.rows[0].proposed_record.officerId).toBe(officerRow.rows[0].id);
+    expect(updated.rows[0].proposed_record.officerName).toBeUndefined();
+    expect(updated.rows[0].proposed_record.proposedOutcome).toEqual({
+      outcomeType: "termination",
+      date: "2020-01-01",
+      details: "APU Closed: Terminated",
+    });
+    expect(updated.rows[0].match_confidence).toBe("high");
+  });
+
+  it("is safe to re-run after officer resolution already happened -- adds proposedOutcome without disturbing the existing officerId", async () => {
+    await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
+    const officerRow = await pool.query<{ id: string }>(
+      `INSERT INTO officers (first_name, last_name, department_id, employment_status, external_officer_ref)
+       VALUES ('Alfred', 'Hernandez', $1, 'active', 'nyc_ccrb:942643') RETURNING id`,
+      [SEED.departments.nyc.id],
+    );
+    // Simulates a row already resolved by a prior run of this same script
+    // (officerId set, officerName stripped, confidence already high).
+    const queueItemId = await insertPendingQueueItem(pool, "201806447:240280", {
+      type: "incident_candidate",
+      officerId: officerRow.rows[0].id,
+      departmentName: SEED.departments.nyc.name,
+      incidentType: "use_of_force",
+      shortDescription: "x",
+    });
+    await pool.query(`UPDATE review_queue SET match_confidence = 'high' WHERE id = $1`, [queueItemId]);
+
+    const fetchNycCcrbAllegations = vi
+      .fn()
+      .mockResolvedValue([allegation({ nypdDisposition: "Instructions", closeDate: "2021-02-02" })]);
+    await runNycCcrbReviewQueueBackfill(pool, ENV, { fetchNycCcrbAllegations });
+
+    const updated = await pool.query(`SELECT proposed_record FROM review_queue WHERE id = $1`, [queueItemId]);
+    expect(updated.rows[0].proposed_record.officerId).toBe(officerRow.rows[0].id); // unchanged
+    expect(updated.rows[0].proposed_record.proposedOutcome).toEqual({
+      outcomeType: "internal_discipline",
+      date: "2021-02-02",
+      details: "Instructions",
+    });
+  });
+
+  it("does not update a row when neither officer nor outcome resolves", async () => {
+    await insertConfig(pool, { departmentName: SEED.departments.nyc.name });
+    await insertPendingQueueItem(pool, "201806447:240280", {
+      type: "incident_candidate",
+      officerName: "Alfred Hernandez",
+      departmentName: SEED.departments.nyc.name,
+      incidentType: "use_of_force",
+      shortDescription: "x",
+    });
+
+    const fetchNycCcrbAllegations = vi.fn().mockResolvedValue([allegation({ nypdDisposition: "APU - Decision Pending" })]);
     const results = await runNycCcrbReviewQueueBackfill(pool, ENV, { fetchNycCcrbAllegations });
 
     expect(results[0].reviewQueueRowsUpdated).toBe(0);
