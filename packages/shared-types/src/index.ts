@@ -271,6 +271,11 @@ export interface IncidentCandidateProposal {
    * DESIGN.md §12) has one. Optional and backward compatible — existing
    * rows without it are unaffected. */
   externalUrl?: string;
+  /** A structured disciplinary outcome proposed alongside this incident --
+   * created atomically with the incident at approval time (no separate
+   * reviewer edit/skip control for it). Pipeline-agnostic: OutcomeType
+   * itself isn't specific to any one source. */
+  proposedOutcome?: { outcomeType: OutcomeType; date?: string; details?: string };
 }
 
 export type ReviewQueueProposal = OfficerCandidateProposal | IncidentCandidateProposal;
